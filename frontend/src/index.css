@@ -1,0 +1,115 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-family: 'Space Grotesk', sans-serif;
+  }
+}
+
+@layer base {
+  :root {
+    --background: 240 6% 10%;
+    --foreground: 240 5% 92%;
+
+    --card: 240 6% 12%;
+    --card-foreground: 240 5% 92%;
+
+    --popover: 240 6% 14%;
+    --popover-foreground: 240 5% 92%;
+
+    --primary: 280 80% 60%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 240 6% 18%;
+    --secondary-foreground: 240 5% 85%;
+
+    --muted: 240 5% 16%;
+    --muted-foreground: 240 5% 55%;
+
+    --accent: 320 75% 55%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 240 5% 20%;
+    --input: 240 5% 18%;
+    --ring: 280 80% 60%;
+
+    --radius: 0.75rem;
+
+    --neon-glow: 280 80% 60%;
+    --neon-pink: 320 75% 55%;
+    --neon-cyan: 185 75% 55%;
+    --surface-glass: 240 6% 14%;
+
+    --sidebar-background: 240 6% 8%;
+    --sidebar-foreground: 240 5% 85%;
+    --sidebar-primary: 280 80% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 5% 16%;
+    --sidebar-accent-foreground: 240 5% 92%;
+    --sidebar-border: 240 5% 16%;
+    --sidebar-ring: 280 80% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Space Grotesk', sans-serif;
+  }
+
+  code, pre {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+@layer utilities {
+  .neon-glow {
+    box-shadow: 0 0 20px hsl(280 80% 60% / 0.15),
+                0 0 60px hsl(280 80% 60% / 0.08),
+                inset 0 0 20px hsl(280 80% 60% / 0.05);
+  }
+
+  .neon-border {
+    border: 1px solid hsl(280 80% 60% / 0.3);
+  }
+
+  .glass {
+    background: hsl(240 6% 14% / 0.8);
+    backdrop-filter: blur(16px);
+  }
+
+  .gradient-mesh {
+    background: 
+      radial-gradient(ellipse at 20% 80%, hsl(280 80% 60% / 0.08) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 20%, hsl(320 75% 55% / 0.06) 0%, transparent 50%),
+      radial-gradient(ellipse at 50% 50%, hsl(185 75% 55% / 0.04) 0%, transparent 60%);
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(240 5% 25%) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(240 5% 25%);
+    border-radius: 4px;
+  }
+}
