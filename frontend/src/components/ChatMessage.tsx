@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 
 export interface Message {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   content: string;
   sources?: { name: string; page?: number }[];
   timestamp: Date;
@@ -13,6 +13,25 @@ export interface Message {
 
 const ChatMessage = ({ message }: { message: Message }) => {
   const isBot = message.role === "assistant";
+  const isSystem = message.role === "system";
+
+  // System messages (document uploads, etc.)
+  if (isSystem) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.2 }}
+        className="flex justify-center px-6 py-2"
+      >
+        <div className="inline-flex items-center gap-2 rounded-full bg-secondary/50 px-4 py-2 text-xs text-muted-foreground border border-border/50">
+          <div className="prose prose-invert prose-xs">
+            <ReactMarkdown>{message.content}</ReactMarkdown>
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div

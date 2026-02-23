@@ -1,14 +1,16 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import ChatSidebar from "@/components/ChatSidebar";
-import ChatMessage, { Message } from "@/components/ChatMessage";
+import ChatMessage from "@/components/ChatMessage";
 import ChatInput from "@/components/ChatInput";
 import TypingIndicator from "@/components/TypingIndicator";
 import PdfUploadBanner, { UploadedPdf } from "@/components/PdfUploadBanner";
 import EmptyState from "@/components/EmptyState";
-import { Menu } from "lucide-react";
+import { Menu, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSessionsList } from "@/hooks/useSessions";
-import { Loader2 } from "lucide-react";
+import { useMessages, useSendMessage } from "@/hooks/useMessages";
+import { useDocuments, useUploadDocument } from "@/hooks/useDocuments";
+import type { Message } from "@/types";
 
 const sampleResponses = [
   "Based on the uploaded document, **Section 3.2** discusses the implementation of vector embeddings using FAISS for semantic similarity search. The key finding is that dense retrieval outperforms sparse methods by **23%** on domain-specific queries.\\n\\n> \\\"The integration of ChromaDB with sentence transformers enables efficient storage and retrieval of document embeddings.\\\"\\n\\nWould you like me to elaborate on the embedding strategy?",
@@ -18,14 +20,16 @@ const sampleResponses = [
 
 const Index = () => {
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Record<string, Message[]>>({});
-  const [typing, setTyping] = useState(false);
   const [pdfs, setPdfs] = useState<UploadedPdf[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Fetch sessions from API
+  // Fetch sessions, messages, and documents from API
   const { data: sessions = [], isLoading, error } = useSessionsList();
+  const { data: messages = [], isLoading: messagesLoading } = useMessages(activeId);
+  const { data: documents = [] } = useDocuments(activeId);
+  const sendMessageMutation = useSendMessage();
+  const uploadDocumentMutation = useUploadDocument();
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => {
@@ -35,7 +39,7 @@ const Index = () => {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, typing, scrollToBottom]);
+  }, [messages, sendMessageMutation.isPending, scrollToBottom]);
 
   const handleSessionCreated = (sessionId: string) => {
     setActiveId(sessionId);
@@ -48,75 +52,33 @@ const Index = () => {
   };
 
   const handleSend = (content: string) => {
-    let cid = activeId;
-
     // If no session is active, user needs to create or join one first
-    if (!cid) {
+    if (!activeId) {
       // Could show a toast here prompting to create/join a session
       return;
     }
 
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      role: "user",
+    // Send message to backend
+    sendMessageMutation.mutate({
+      sessionId: activeId,
       content,
-      timestamp: new Date(),
-    };
-
-    setMessages((prev) => ({
-      ...prev,
-      [cid!]: [...(prev[cid!] || []), userMsg],
-    }));
-
-    setTyping(true);
-
-    // Simulate bot response (will be replaced with real API call in Phase 4)
-    const delay = 1500 + Math.random() * 2000;
-    const finalCid = cid;
-    setTimeout(() => {
-      const botMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: sampleResponses[Math.floor(Math.random() * sampleResponses.length)],
-        sources: [
-          { name: "architecture.pdf", page: 12 },
-          { name: "research.pdf", page: 7 },
-        ],
-        timestamp: new Date(),
-      };
-      setMessages((prev) => ({
-        ...prev,
-        [finalCid!]: [...(prev[finalCid!] || []), botMsg],
-      }));
-      setTyping(false);
-    }, delay);
-  };
-
-  const handleUpload = (files: FileList) => {
-    const newPdfs: UploadedPdf[] = Array.from(files).map((f) => ({
-      name: f.name,
-      status: "uploading" as const,
-    }));
-    setPdfs((prev) => [...prev, ...newPdfs]);
-
-    // Simulate processing (will be replaced with real API call in Phase 3)
-    newPdfs.forEach((pdf) => {
-      setTimeout(() => {
-        setPdfs((prev) =>
-          prev.map((p) => (p.name === pdf.name ? { ...p, status: "processing" as const } : p))
-        );
-      }, 1000);
-      setTimeout(() => {
-        setPdfs((prev) =>
-          prev.map((p) =>
-            p.name === pdf.name ? { ...p, status: "ready" as const, pages: Math.floor(Math.random() * 50) + 5 } : p
-          )
-        );
-      }, 3000);
     });
   };
 
-  const currentMessages = activeId ? messages[activeId] || [] : [];
+  const handleUpload = async (files: FileList) => {
+    if (!activeId) {
+      return;
+    }
+
+    // Upload each file to the backend
+    Array.from(files).forEach((file) => {
+      uploadDocumentMutation.mutate({
+        sessionId: activeId,
+        file,
+      });
+    });
+  };
+
   const activeSession = sessions.find((s) => s.id === activeId);
 
   // Show loading state
@@ -200,16 +162,29 @@ const Index = () => {
         </div>
 
         {/* Messages */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin">
-          {currentMessages.length === 0 && !typing ? (
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-6">
+          {messagesLoading ? (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : messages.length === 0 ? (
             <EmptyState />
           ) : (
-            <div className="py-4">
-              {currentMessages.map((msg) => (
-                <ChatMessage key={msg.id} message={msg} />
-              ))}
-              {typing && <TypingIndicator />}
-            </div>
+            <>
+              <AnimatePresence mode="popLayout">
+                {messages.map((msg) => {
+                  // Convert backend message to component format
+                  const componentMessage = {
+                    id: msg.id,
+                    role: "user" as const, // All messages from backend are user messages for now
+                    content: msg.content,
+                    timestamp: new Date(msg.created_at),
+                  };
+                  return <ChatMessage key={msg.id} message={componentMessage} />;
+                })}
+              </AnimatePresence>
+              {sendMessageMutation.isPending && <TypingIndicator />}
+            </>
           )}
         </div>
 
@@ -220,7 +195,7 @@ const Index = () => {
         <ChatInput
           onSend={handleSend}
           onUpload={handleUpload}
-          disabled={typing || !activeId}
+          disabled={sendMessageMutation.isPending || !activeId}
           placeholder={!activeId ? "Create or join a session to start chatting..." : undefined}
         />
       </div>

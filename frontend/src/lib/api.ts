@@ -1,4 +1,5 @@
 import axios from "axios";
+import { Cookies } from "./cookies";
 import type {
     AuthResponse,
     LoginRequest,
@@ -8,6 +9,8 @@ import type {
     SessionListItem,
     SessionCreate,
     SessionJoin,
+    Message,
+    Document,
 } from "@/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
@@ -20,10 +23,10 @@ export const api = axios.create({
     },
 });
 
-// Request interceptor to add auth token
+// Request interceptor to add auth token from cookies
 api.interceptors.request.use(
     (config) => {
-        const token = localStorage.getItem("access_token");
+        const token = Cookies.get("access_token");
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
@@ -38,8 +41,8 @@ api.interceptors.response.use(
     (error) => {
         if (error.response?.status === 401) {
             // Token expired or invalid
-            localStorage.removeItem("access_token");
-            localStorage.removeItem("user");
+            Cookies.remove("access_token");
+            Cookies.remove("user");
             window.location.href = "/auth";
         }
         return Promise.reject(error);
@@ -65,6 +68,11 @@ export const authApi = {
                 "Content-Type": "application/x-www-form-urlencoded",
             },
         });
+
+        // Store token in cookies (7 days expiry)
+        // User data will be fetched and stored by useAuth hook
+        Cookies.set("access_token", response.data.access_token, { expires: 7 });
+
         return response.data;
     },
 
@@ -103,5 +111,56 @@ export const sessionApi = {
 
     async deleteSession(sessionId: string): Promise<void> {
         await api.delete(`/api/sessions/${sessionId}`);
+    },
+};
+
+// ============ Message API ============
+
+export const messageApi = {
+    async sendMessage(sessionId: string, content: string): Promise<Message> {
+        const response = await api.post<Message>(
+            `/api/sessions/${sessionId}/messages`,
+            { content }
+        );
+        return response.data;
+    },
+
+    async getMessages(sessionId: string, limit = 100, offset = 0): Promise<Message[]> {
+        const response = await api.get<Message[]>(
+            `/api/sessions/${sessionId}/messages`,
+            { params: { limit, offset } }
+        );
+        return response.data;
+    },
+};
+
+// ============ Document API ============
+
+export const documentApi = {
+    async uploadDocument(sessionId: string, file: File): Promise<Document> {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const response = await api.post<Document>(
+            `/api/sessions/${sessionId}/documents`,
+            formData,
+            {
+                headers: {
+                    "Content-Type": "multipart/form-data",
+                },
+            }
+        );
+        return response.data;
+    },
+
+    async listDocuments(sessionId: string): Promise<Document[]> {
+        const response = await api.get<Document[]>(
+            `/api/sessions/${sessionId}/documents`
+        );
+        return response.data;
+    },
+
+    async deleteDocument(sessionId: string, documentId: string): Promise<void> {
+        await api.delete(`/api/sessions/${sessionId}/documents/${documentId}`);
     },
 };

@@ -61,11 +61,27 @@ export interface SessionJoin {
     join_code: string;
 }
 
-// Message types (for future use)
+// Message types
+export interface MessageCreate {
+    content: string;
+}
+
 export interface Message {
     id: string;
-    role: "user" | "assistant";
+    session_id: string;
+    user_id: string | null;
     content: string;
-    timestamp: Date;
-    sources?: { name: string; page: number }[];
+    created_at: string;
+    role: "user" | "assistant" | "system";
+    user?: User;
+}
+
+// Document types
+export interface Document {
+    id: string;
+    session_id: string;
+    uploaded_by: string;
+    filename: string;
+    storage_path: string;
+    uploaded_at: string;
 }

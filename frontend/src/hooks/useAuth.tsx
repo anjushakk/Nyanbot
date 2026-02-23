@@ -1,5 +1,6 @@
 import { useState, createContext, useContext, ReactNode, useEffect } from "react";
 import { authApi } from "@/lib/api";
+import { Cookies } from "@/lib/cookies";
 import type { User } from "@/types";
 
 interface AuthContextType {
@@ -16,18 +17,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
 
-    // Check for existing session on mount
+    // Check for existing session on mount from cookies
     useEffect(() => {
         const initAuth = async () => {
-            const token = localStorage.getItem("access_token");
+            const token = Cookies.get("access_token");
             if (token) {
                 try {
-                    const userData = await authApi.getMe();
-                    setUser(userData);
+                    // Try to get user from cookie first
+                    const userStr = Cookies.get("user");
+                    if (userStr) {
+                        setUser(JSON.parse(userStr));
+                    } else {
+                        // Fallback: fetch from API
+                        const userData = await authApi.getMe();
+                        setUser(userData);
+                        Cookies.set("user", JSON.stringify(userData), { expires: 7 });
+                    }
                 } catch (error) {
                     // Token invalid, clear it
-                    localStorage.removeItem("access_token");
-                    localStorage.removeItem("user");
+                    Cookies.remove("access_token");
+                    Cookies.remove("user");
                 }
             }
             setLoading(false);
@@ -37,13 +46,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const login = async (email: string, password: string) => {
         try {
-            const response = await authApi.login({ username: email, password });
-            localStorage.setItem("access_token", response.access_token);
+            // Login and get token (token is stored in cookies by authApi.login)
+            await authApi.login({ username: email, password });
 
-            // Fetch user data
+            // Fetch user data and store in cookies
             const userData = await authApi.getMe();
             setUser(userData);
-            localStorage.setItem("user", JSON.stringify(userData));
+            Cookies.set("user", JSON.stringify(userData), { expires: 7 });
         } catch (error: any) {
             const message = error.response?.data?.detail || "Login failed";
             throw new Error(message);
@@ -64,8 +73,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     const logout = async () => {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("user");
+        Cookies.remove("access_token");
+        Cookies.remove("user");
         setUser(null);
     };
 
