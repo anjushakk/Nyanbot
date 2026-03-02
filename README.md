@@ -6,18 +6,20 @@ A collaborative RAG (Retrieval-Augmented Generation) chatbot with session manage
 
 - 🔐 **JWT Authentication** - Secure user registration and login
 - 👥 **Session Management** - Create and join collaborative chat sessions
-- 📄 **PDF Processing** - Upload and query PDF documents (coming in Phase 4)
-- 💬 **Real-time Chat** - Beautiful, responsive chat interface
-- 🎨 **Modern UI** - Built with React, TypeScript, and shadcn/ui
+- 📄 **RAG Pipeline** - Upload PDFs and get AI answers with document citations
+- ⚡ **Real-time Collaboration** - Instant multi-user sync via WebSockets
+- 🧠 **ChromaDB Integration** - High-speed vector search for large documents
+- 🎨 **Modern UI** - Premium design with React, TypeScript, and shadcn/ui
 
 ## Tech Stack
 
 ### Backend
 - **FastAPI** - Modern Python web framework
-- **PostgreSQL** - Relational database
-- **SQLAlchemy** - ORM for database operations
-- **JWT** - Token-based authentication
-- **Alembic** - Database migrations
+- **PostgreSQL** - Relational database for users/sessions
+- **ChromaDB** - Vector database for document embeddings
+- **Groq & HuggingFace** - High-performance AI and embedding models
+- **SQLAlchemy & Alembic** - Database management and migrations
+- **WebSockets** - Low-latency real-time broadcasting
 
 ### Frontend
 - **React** - UI library
@@ -159,7 +161,7 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 npm run dev
 ```
 
-The frontend will be available at: **http://localhost:5173**
+The frontend will be available at: **http://localhost:8080**
 
 ---
 
@@ -167,7 +169,7 @@ The frontend will be available at: **http://localhost:5173**
 
 ### 1. Register a New User
 
-1. Navigate to http://localhost:5173
+1. Navigate to http://localhost:8080
 2. You'll be redirected to the authentication page
 3. Click "Sign up" and create an account with:
    - Name
@@ -400,7 +402,7 @@ For issues and questions:
 - [x] Phase 1: Backend Foundation & Authentication
 - [x] Phase 2: Session Management
 - [x] Phase 3: Frontend Integration
-- [ ] Phase 4: PDF Upload & Processing
-- [ ] Phase 5: RAG Implementation with Vector Database
-- [ ] Phase 6: Real-time WebSocket Support
+- [x] Phase 4: PDF Upload & Processing
+- [x] Phase 5: RAG Implementation with Vector Database
+- [x] Phase 6: Real-time WebSocket Support
 - [ ] Phase 7: Advanced Features (Search, Export, etc.)

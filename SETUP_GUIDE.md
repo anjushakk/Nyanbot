@@ -38,14 +38,16 @@ cat > .env << EOF
 DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/nyanbot
 SECRET_KEY=$(openssl rand -hex 32)
 ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+GROQ_API_KEY=your_groq_api_key
+HF_API_KEY=your_huggingface_api_key
 EOF
 
 # Run migrations
 alembic upgrade head
 
-# Start backend
-uvicorn app.main:app --reload --port 8000
+# Start backend (accessible on network)
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 **⚠️ Important**: Replace `YOUR_PASSWORD` with your actual PostgreSQL password in the `.env` file.
@@ -61,8 +63,8 @@ cd frontend
 # Install dependencies
 npm install
 
-# Create .env file
-echo "VITE_API_BASE_URL=http://127.0.0.1:8000" > .env
+# Create .env file (use your network IP if testing on other devices)
+echo "VITE_API_BASE_URL=http://localhost:8000" > .env
 
 # Start frontend
 npm run dev
@@ -73,7 +75,7 @@ npm run dev
 1. **Backend**: Open http://localhost:8000/docs
    - You should see the Swagger API documentation
 
-2. **Frontend**: Open http://localhost:8000
+2. **Frontend**: Open http://localhost:8080
    - You should see the login/register page
 
 3. **Test the flow**:
@@ -139,7 +141,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES=30
 
 ### Frontend `.env`
 ```env
-VITE_API_BASE_URL=http://127.0.0.1:8000
+VITE_API_BASE_URL=http://localhost:8000
+# NOTE: Use http://YOUR_NETWORK_IP:8000 for multi-device access
 ```
 
 ---
