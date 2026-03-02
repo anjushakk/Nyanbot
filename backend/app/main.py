@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import auth, sessions, messages, documents
+from app.routers import auth, sessions, messages, documents, websockets
 from app.routers.documents import search_router
 from app.database import engine
 from app import models
@@ -30,6 +30,7 @@ app.include_router(sessions.router)
 app.include_router(messages.router)
 app.include_router(documents.router)
 app.include_router(search_router)
+app.include_router(websockets.router)
 
 
 @app.get("/")

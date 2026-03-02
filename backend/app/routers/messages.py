@@ -1,12 +1,13 @@
 """Message management router."""
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
 from app import models, schemas
 from app.database import get_db
 from app.routers.auth import get_current_user
+from app.services.websocket_manager import manager
 
 
 router = APIRouter(prefix="/api/sessions/{session_id}/messages", tags=["messages"])
@@ -16,6 +17,7 @@ router = APIRouter(prefix="/api/sessions/{session_id}/messages", tags=["messages
 def send_message(
     session_id: str,
     message_data: schemas.MessageCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
@@ -53,32 +55,58 @@ def send_message(
     db.commit()
     db.refresh(user_message)
     
+    # Broadcast user message immediately
+    from fastapi.encoders import jsonable_encoder
+    
+    async def broadcast_updates(msg_obj, sess_id):
+        # Broadcast user message
+        msg_json = jsonable_encoder(schemas.MessageResponse.model_validate(msg_obj))
+        await manager.broadcast_to_session(sess_id, {"type": "new_message", "message": msg_json})
+
+    background_tasks.add_task(broadcast_updates, user_message, session_id)
+    
     # Search for relevant context from documents using RAG
     context = ""
     try:
         from app.services.embeddings import EmbeddingService
-        from app.services.vector_store import VectorStore
+        from app.services.chroma_store import ChromaStore
         
-        # Load vector store for this session
-        vector_store = VectorStore()
-        vector_store_path = f"vector_stores/{session_id}"
-        vector_store.load(vector_store_path)
+        # Search in ChromaDB
+        chroma_store = ChromaStore()
         
-        # Generate query embedding and search
+        # Generate query embedding
         embedding_service = EmbeddingService()
         query_embedding = embedding_service.generate_query_embedding(message_data.content)
-        search_results = vector_store.search(query_embedding, k=3)
+        
+        # Search
+        # Search with k=8 to improve accuracy (truncation in LLM service will protect TPM)
+        search_results = chroma_store.search(session_id, query_embedding, k=8)
         
         # Build context from top results
         if search_results:
             context = "\n\n".join([
-                f"[From {meta.get('filename', 'document')}]: {chunk}"
-                for chunk, meta, score in search_results
+                f"[From {res['metadata'].get('filename', 'document')}]: {res['content']}"
+                for res in search_results
             ])
+            print(f"DEBUG: Found {len(search_results)} matching chunks in ChromaDB")
+        
+        # Fallback for general queries (like 'summarise') if results are thin
+        is_summary_query = any(word in message_data.content.lower() for word in ["summarize", "summarise", "overview", "what is this", "about"])
+        if (not context or is_summary_query) and db.query(models.Document).filter(models.Document.session_id == session_id).count() > 0:
+            print("DEBUG: General query detected or no context found. Fetching document introductions.")
+            intro_chunks = db.query(models.Chunk).join(models.Document).filter(
+                models.Document.session_id == session_id,
+                models.Chunk.chunk_index < 3 # Get first 3 chunks as introduction
+            ).limit(5).all()
+            
+            if intro_chunks:
+                intro_context = "\n\n".join([f"[Intro from {c.document.filename}]: {c.content}" for c in intro_chunks])
+                context = (context + "\n\nDOCUMENT INTRODUCTIONS:\n" + intro_context).strip()
     except Exception as e:
         # No documents or vector store doesn't exist - that's okay
         print(f"No RAG context available: {e}")
         context = ""
+
     
     # Get conversation history (last 10 messages)
     history = db.query(models.Message).filter(
@@ -94,23 +122,17 @@ def send_message(
     from app.services.llm_service import LLMService
     llm_service = LLMService()
     
-    if context:
-        ai_response_text = llm_service.generate_response(
-            query=message_data.content,
-            context=context,
-            conversation_history=conversation_history
-        )
-    else:
-        # No documents uploaded yet
-        ai_response_text = llm_service.generate_response(
-            query=message_data.content,
-            context="",
-            conversation_history=conversation_history
-        )
-        
-        # Add helpful message if no documents
-        if "don't have" not in ai_response_text.lower():
-            ai_response_text = "I don't have any documents to reference yet. Please upload some PDFs to get started!\n\n" + ai_response_text
+    # Generate response
+    ai_response_text = llm_service.generate_response(
+        query=message_data.content,
+        context=context,
+        conversation_history=conversation_history
+    )
+    
+    # If no documents exist in session, inform user
+    doc_count = db.query(models.Document).filter(models.Document.session_id == session_id).count()
+    if doc_count == 0 and not "upload" in ai_response_text.lower():
+        ai_response_text = "I don't have any documents to reference yet. Please upload some PDFs to get started!\n\n" + ai_response_text
     
     # Save AI response
     ai_message = models.Message(
@@ -123,6 +145,9 @@ def send_message(
     db.add(ai_message)
     db.commit()
     db.refresh(ai_message)
+    
+    # Broadcast AI response
+    background_tasks.add_task(broadcast_updates, ai_message, session_id)
     
     # Return the user message (frontend will poll and get AI response)
     return user_message

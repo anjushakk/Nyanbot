@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { messageApi } from "@/lib/api";
 import { toast } from "sonner";
+import { useWebSocket } from "./useWebSocket";
 
 // Query keys
 const messageKeys = {
@@ -11,11 +12,13 @@ const messageKeys = {
 // ============ Queries ============
 
 export function useMessages(sessionId: string | null) {
+    // Initialize WebSocket for this session
+    useWebSocket(sessionId);
+
     return useQuery({
         queryKey: messageKeys.bySession(sessionId || ""),
         queryFn: () => messageApi.getMessages(sessionId!),
         enabled: !!sessionId, // Only fetch if sessionId exists
-        refetchInterval: 3000, // Poll every 3 seconds for new messages
         refetchOnWindowFocus: true,
         staleTime: 1000, // Consider data stale after 1 second
     });

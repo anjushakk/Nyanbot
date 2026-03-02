@@ -1,5 +1,5 @@
 """PDF processing service for text extraction and chunking."""
-from PyPDF2 import PdfReader
+from pypdf import PdfReader
 from typing import List
 
 
@@ -18,6 +18,7 @@ class PDFProcessor:
             Extracted text as a single string
         """
         try:
+            from pypdf import PdfReader
             reader = PdfReader(pdf_path)
             text = ""
             for page in reader.pages:
@@ -31,7 +32,7 @@ class PDFProcessor:
     @staticmethod
     def chunk_text(
         text: str, 
-        chunk_size: int = 512, 
+        chunk_size: int = 300, 
         overlap: int = 50
     ) -> List[str]:
         """
@@ -48,14 +49,39 @@ class PDFProcessor:
         if not text:
             return []
         
-        words = text.split()
+        # Split by sentences more robustly
+        import re
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+        
         chunks = []
+        current_chunk = []
+        current_len = 0
         
-        for i in range(0, len(words), chunk_size - overlap):
-            chunk = " ".join(words[i:i + chunk_size])
-            if chunk:  # Only add non-empty chunks
-                chunks.append(chunk)
-        
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+            
+            # Use character count as a proxy for tokens (approx 4 chars per token)
+            # or word count as requested (chunk_size: int = 512 words)
+            words = sentence.split()
+            if not words:
+                continue
+                
+            if current_len + len(words) > chunk_size and current_chunk:
+                chunks.append(" ".join(current_chunk))
+                # Keep some overlap
+                # Overlap logic: keep last 'overlap' words
+                overlap_words = current_chunk[-overlap:] if len(current_chunk) > overlap else current_chunk
+                current_chunk = overlap_words + words
+                current_len = len(current_chunk)
+            else:
+                current_chunk.extend(words)
+                current_len += len(words)
+                
+        if current_chunk:
+            chunks.append(" ".join(current_chunk))
+            
         return chunks
     
     @staticmethod

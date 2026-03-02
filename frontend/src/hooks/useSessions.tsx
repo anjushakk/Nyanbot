@@ -19,7 +19,6 @@ export function useSessionsList() {
         queryKey: sessionKeys.list(),
         queryFn: () => sessionApi.listSessions(),
         staleTime: 30000, // 30 seconds
-        refetchInterval: 5000, // Poll every 5 seconds for real-time updates
         refetchOnWindowFocus: true, // Refetch when user returns to tab
         refetchOnReconnect: true, // Refetch when reconnecting
     });

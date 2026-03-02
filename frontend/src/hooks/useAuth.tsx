@@ -17,26 +17,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
 
-    // Check for existing session on mount from cookies
+    // Check for existing session on mount from API
     useEffect(() => {
         const initAuth = async () => {
             const token = Cookies.get("access_token");
             if (token) {
                 try {
-                    // Try to get user from cookie first
-                    const userStr = Cookies.get("user");
-                    if (userStr) {
-                        setUser(JSON.parse(userStr));
-                    } else {
-                        // Fallback: fetch from API
-                        const userData = await authApi.getMe();
-                        setUser(userData);
-                        Cookies.set("user", JSON.stringify(userData), { expires: 7 });
-                    }
+                    // Always fetch fresh from API to ensure identity is correct and synced
+                    const userData = await authApi.getMe();
+                    setUser(userData);
+                    // We can still set the cookie, but next reload will IGNORE it 
+                    // and fetch from API again for perfection.
+                    Cookies.set("user", JSON.stringify(userData), { expires: 7 });
                 } catch (error) {
-                    // Token invalid, clear it
+                    // Token invalid or expired, clear everything
                     Cookies.remove("access_token");
                     Cookies.remove("user");
+                    setUser(null);
                 }
             }
             setLoading(false);

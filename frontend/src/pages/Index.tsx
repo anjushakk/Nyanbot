@@ -5,24 +5,19 @@ import ChatInput from "@/components/ChatInput";
 import TypingIndicator from "@/components/TypingIndicator";
 import PdfUploadBanner, { UploadedPdf } from "@/components/PdfUploadBanner";
 import EmptyState from "@/components/EmptyState";
-import { Menu, Loader2 } from "lucide-react";
+import { Menu, Loader2, FileText } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSessionsList } from "@/hooks/useSessions";
 import { useMessages, useSendMessage } from "@/hooks/useMessages";
 import { useDocuments, useUploadDocument } from "@/hooks/useDocuments";
-import type { Message } from "@/types";
-
-const sampleResponses = [
-  "Based on the uploaded document, **Section 3.2** discusses the implementation of vector embeddings using FAISS for semantic similarity search. The key finding is that dense retrieval outperforms sparse methods by **23%** on domain-specific queries.\\n\\n> \\\"The integration of ChromaDB with sentence transformers enables efficient storage and retrieval of document embeddings.\\\"\\n\\nWould you like me to elaborate on the embedding strategy?",
-  "I found relevant information across **3 documents**:\\n\\n1. **Architecture Overview** (p.12): The system uses a microservices approach with FastAPI handling the backend API layer.\\n2. **Data Pipeline** (p.7): PDF processing involves text extraction, chunking (512 tokens with 50-token overlap), and embedding generation.\\n3. **Evaluation Results** (p.24): The RAG pipeline achieved an F1 score of **0.89** on the test dataset.\\n\\nThe key takeaway is that chunk size significantly impacts retrieval quality.",
-  "Looking at your documents, I can see the system requirements specify:\\n\\n- **Backend**: Python with FastAPI\\n- **Vector Store**: ChromaDB for embeddings\\n- **Search**: FAISS for semantic similarity\\n- **Database**: PostgreSQL for metadata\\n\\nThe architecture follows a modular design pattern. Shall I create a comparison table of the different retrieval strategies mentioned?",
-];
+import { useAuth } from "@/hooks/useAuth";
 
 const Index = () => {
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [pdfs, setPdfs] = useState<UploadedPdf[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const { user: currentUser } = useAuth();
 
   // Fetch sessions, messages, and documents from API
   const { data: sessions = [], isLoading, error } = useSessionsList();
@@ -52,13 +47,7 @@ const Index = () => {
   };
 
   const handleSend = (content: string) => {
-    // If no session is active, user needs to create or join one first
-    if (!activeId) {
-      // Could show a toast here prompting to create/join a session
-      return;
-    }
-
-    // Send message to backend
+    if (!activeId) return;
     sendMessageMutation.mutate({
       sessionId: activeId,
       content,
@@ -66,11 +55,7 @@ const Index = () => {
   };
 
   const handleUpload = async (files: FileList) => {
-    if (!activeId) {
-      return;
-    }
-
-    // Upload each file to the backend
+    if (!activeId) return;
     Array.from(files).forEach((file) => {
       uploadDocumentMutation.mutate({
         sessionId: activeId,
@@ -81,7 +66,6 @@ const Index = () => {
 
   const activeSession = sessions.find((s) => s.id === activeId);
 
-  // Show loading state
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background gradient-mesh">
@@ -93,7 +77,6 @@ const Index = () => {
     );
   }
 
-  // Show error state
   if (error) {
     return (
       <div className="flex h-screen items-center justify-center bg-background gradient-mesh">
@@ -107,7 +90,6 @@ const Index = () => {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background gradient-mesh">
-      {/* Mobile overlay */}
       <AnimatePresence>
         {sidebarOpen && (
           <motion.div
@@ -120,7 +102,6 @@ const Index = () => {
         )}
       </AnimatePresence>
 
-      {/* Sidebar */}
       <div className={`fixed inset-y-0 left-0 z-50 md:relative md:z-auto transition-transform md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
         <ChatSidebar
           sessions={sessions}
@@ -134,9 +115,7 @@ const Index = () => {
         />
       </div>
 
-      {/* Main */}
       <div className="flex flex-1 flex-col min-w-0">
-        {/* Top bar */}
         <div className="flex items-center gap-3 border-b border-border px-4 py-3 md:px-6">
           <button onClick={() => setSidebarOpen(true)} className="md:hidden text-muted-foreground hover:text-foreground">
             <Menu className="h-5 w-5" />
@@ -161,7 +140,6 @@ const Index = () => {
           )}
         </div>
 
-        {/* Messages */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-6">
           {messagesLoading ? (
             <div className="flex items-center justify-center h-full">
@@ -172,26 +150,37 @@ const Index = () => {
           ) : (
             <>
               <AnimatePresence mode="popLayout">
-                {messages.map((msg) => {
-                  // Convert backend message to component format
-                  const componentMessage = {
-                    id: msg.id,
-                    role: "user" as const, // All messages from backend are user messages for now
-                    content: msg.content,
-                    timestamp: new Date(msg.created_at),
-                  };
-                  return <ChatMessage key={msg.id} message={componentMessage} />;
-                })}
+                {messages.map((msg) => (
+                  <ChatMessage
+                    key={msg.id}
+                    message={{
+                      ...msg,
+                      timestamp: new Date(msg.created_at)
+                    }}
+                    isOwnMessage={msg.user_id === currentUser?.id}
+                  />
+                ))}
               </AnimatePresence>
               {sendMessageMutation.isPending && <TypingIndicator />}
             </>
           )}
         </div>
 
-        {/* PDF Banner */}
-        <PdfUploadBanner files={pdfs} onRemove={(name) => setPdfs((prev) => prev.filter((p) => p.name !== name))} />
+        {/* Uploaded Documents List */}
+        {activeId && documents.length > 0 && (
+          <div className="mx-6 mb-2 flex flex-wrap gap-2 py-2 px-3 rounded-xl bg-card/50 border border-border/50">
+            <div className="flex items-center gap-1.5 mr-2">
+              <FileText className="h-3.5 w-3.5 text-primary" />
+              <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Session Files:</span>
+            </div>
+            {documents.map((doc) => (
+              <div key={doc.id} className="flex items-center gap-1.5 rounded-lg bg-secondary/50 px-2 py-1 text-[11px] text-foreground border border-border/30">
+                <span className="max-w-[120px] truncate">{doc.filename}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
-        {/* Input */}
         <ChatInput
           onSend={handleSend}
           onUpload={handleUpload}

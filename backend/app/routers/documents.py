@@ -17,8 +17,8 @@ router = APIRouter(prefix="/api/sessions/{session_id}/documents", tags=["documen
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# File size limit (10MB)
-MAX_FILE_SIZE = 10 * 1024 * 1024
+# File size limit (20MB)
+MAX_FILE_SIZE = 20 * 1024 * 1024
 
 
 @router.post("", response_model=schemas.DocumentResponse, status_code=status.HTTP_201_CREATED)
@@ -97,7 +97,9 @@ async def upload_document(
     try:
         from app.services.pdf_processor import PDFProcessor
         from app.services.embeddings import EmbeddingService
-        from app.services.vector_store import VectorStore
+        from app.services.chroma_store import ChromaStore
+        
+        print(f"DEBUG: Processing document {document.id} for RAG...")
         
         # Initialize services
         pdf_processor = PDFProcessor()
@@ -105,25 +107,20 @@ async def upload_document(
         
         # Extract text from PDF
         text = pdf_processor.extract_text(file_path)
+        print(f"DEBUG: Extracted {len(text)} characters from PDF")
         
         # Chunk the text
         chunks = pdf_processor.chunk_text(text, chunk_size=512, overlap=50)
+        print(f"DEBUG: Created {len(chunks)} chunks")
         
         if chunks:
             # Generate embeddings
+            print(f"DEBUG: Generating embeddings for {len(chunks)} chunks...")
             embeddings = embedding_service.generate_embeddings(chunks)
+            print(f"DEBUG: Embeddings generated successfully")
             
-            # Load or create vector store for this session
-            vector_store_path = f"vector_stores/{session_id}"
-            vector_store = VectorStore()
-            
-            # Try to load existing vector store
-            try:
-                vector_store.load(vector_store_path)
-            except:
-                pass  # New vector store
-            
-            # Add document chunks to vector store
+            # Add document chunks to ChromaDB
+            chroma_store = ChromaStore()
             metadata = [
                 {
                     "document_id": str(document.id),
@@ -132,10 +129,9 @@ async def upload_document(
                 }
                 for i in range(len(chunks))
             ]
-            vector_store.add_documents(embeddings, chunks, metadata)
+            chroma_store.add_documents(session_id, embeddings, chunks, metadata)
             
-            # Save vector store
-            vector_store.save(vector_store_path)
+            print(f"DEBUG: Document chunks added to ChromaDB")
             
             # Store chunks in database
             for i, chunk_text in enumerate(chunks):
@@ -146,10 +142,15 @@ async def upload_document(
                 )
                 db.add(chunk)
             db.commit()
+            print(f"DEBUG: Chunks stored in database")
+        else:
+            print("DEBUG: No text chunks extracted from PDF")
     
     except Exception as e:
         # Log error but don't fail the upload
+        import traceback
         print(f"Error processing document for RAG: {str(e)}")
+        traceback.print_exc()
         # Document is still uploaded, just not processed for RAG yet
     
     # Create a system message in the chat to show the document was uploaded
@@ -157,13 +158,15 @@ async def upload_document(
         system_message = models.Message(
             session_id=session_id,
             user_id=None,  # System message
-            content=f"📎 **{current_user.username}** uploaded: **{file.filename}**",
+            content=f"📎 **{current_user.name}** uploaded: **{file.filename}**",
             role="system"
         )
         db.add(system_message)
         db.commit()
+        print("DEBUG: System message created")
     except Exception as e:
         print(f"Error creating system message: {e}")
+
     
     return document
 
@@ -237,6 +240,14 @@ def delete_document(
     if os.path.exists(document.storage_path):
         os.remove(document.storage_path)
     
+    # Delete from ChromaDB
+    try:
+        from app.services.chroma_store import ChromaStore
+        chroma_store = ChromaStore()
+        chroma_store.delete_document(session_id, document_id)
+    except Exception as e:
+        print(f"Error deleting from ChromaDB: {e}")
+
     # Delete document record
     db.delete(document)
     db.commit()
@@ -281,34 +292,19 @@ def search_documents(
     
     try:
         from app.services.embeddings import EmbeddingService
-        from app.services.vector_store import VectorStore
+        from app.services.chroma_store import ChromaStore
         
-        # Load vector store for this session
-        vector_store_path = f"vector_stores/{session_id}"
-        vector_store = VectorStore()
-        
-        try:
-            vector_store.load(vector_store_path)
-        except:
-            # No vector store exists yet
-            return []
+        # Search in ChromaDB
+        chroma_store = ChromaStore()
         
         # Generate query embedding
         embedding_service = EmbeddingService()
         query_embedding = embedding_service.generate_query_embedding(query)
         
         # Search
-        results = vector_store.search(query_embedding, k)
+        results = chroma_store.search(session_id, query_embedding, k)
         
-        # Format results
-        return [
-            {
-                "content": chunk,
-                "metadata": metadata,
-                "score": score
-            }
-            for chunk, metadata, score in results
-        ]
+        return results
     
     except Exception as e:
         print(f"Error searching documents: {str(e)}")

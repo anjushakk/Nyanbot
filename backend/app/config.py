@@ -1,24 +1,19 @@
-"""Application configuration using Pydantic settings."""
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
 
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables."""
-    
-    # Database
     DATABASE_URL: str
-    
-    # JWT
     SECRET_KEY: str
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    
-    # Environment
-    ENVIRONMENT: str = "development"
-    
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    ALGORITHM: str
+    ACCESS_TOKEN_EXPIRE_MINUTES: int
+    GROQ_API_KEY: str
+    HF_API_KEY: str
 
+    model_config = SettingsConfigDict(
+        env_file=BASE_DIR / ".env",
+        extra="ignore"
+    )
 
 settings = Settings()

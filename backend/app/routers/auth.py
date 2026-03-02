@@ -12,7 +12,11 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> models.User:
-    """Get the current authenticated user from JWT token."""
+    """Get the current authenticated user from JWT token (for HTTP)."""
+    return get_current_user_from_token(token, db)
+
+def get_current_user_from_token(token: str, db: Session) -> models.User:
+    """Get the current authenticated user from a raw JWT token."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",

@@ -15,3 +15,5 @@ ENV/
 .vscode/
 *.log
 vector_stores/
+chroma_db/
+uploads/
