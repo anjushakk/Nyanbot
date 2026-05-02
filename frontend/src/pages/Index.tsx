@@ -251,11 +251,7 @@ const Index = () => {
             {documents.map((doc) => (
               <div 
                 key={doc.id} 
-                className="flex items-center gap-2 rounded-lg bg-secondary/50 px-2 py-1 text-[11px] text-foreground border border-border/30 group cursor-pointer hover:bg-secondary transition-colors"
-                onClick={() => {
-                  const token = Cookies.get('access_token');
-                  window.open(`${import.meta.env.VITE_API_BASE_URL}/api/sessions/${activeId}/documents/${doc.id}/view?token=${token}`, '_blank');
-                }}
+                className="flex items-center gap-2 rounded-lg bg-secondary/50 px-2 py-1 text-[11px] text-foreground border border-border/30 group"
               >
                 <span className="max-w-[120px] truncate">{doc.filename}</span>
                 <button

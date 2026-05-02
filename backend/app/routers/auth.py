@@ -42,22 +42,6 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     return get_current_user_from_token(token, db)
 
 
-def get_current_user_flexible(
-    token: Optional[str] = Depends(oauth2_scheme), 
-    token_query: Optional[str] = Query(None, alias="token"),
-    db: Session = Depends(get_db)
-) -> models.User:
-    """Get user from header OR query param 'token' (for direct links)."""
-    actual_token = token or token_query
-    if not actual_token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return get_current_user_from_token(actual_token, db)
-
-
 @router.post("/register", response_model=schemas.User, status_code=status.HTTP_201_CREATED)
 def register(user_data: schemas.UserCreate, db: Session = Depends(get_db)):
     """Register a new user."""

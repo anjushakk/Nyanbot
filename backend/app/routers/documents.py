@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.database import get_db
-from app.routers.auth import get_current_user, get_current_user_flexible
+from app.routers.auth import get_current_user
 
 router = APIRouter(prefix="/api/sessions/{session_id}/documents", tags=["documents"])
 
@@ -408,49 +408,3 @@ def search_documents(
         print(f"Error searching documents: {str(e)}")
         return []
 
-
-@router.get("/{document_id}/view")
-def view_document(
-    session_id: str,
-    document_id: str,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user_flexible)
-):
-    """View a document's PDF file."""
-    # Check if user is a member of the session
-    is_member = db.query(models.SessionMember).filter(
-        models.SessionMember.session_id == session_id,
-        models.SessionMember.user_id == current_user.id
-    ).first()
-    
-    if not is_member:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You are not a member of this session"
-        )
-    
-    # Get document
-    document = db.query(models.Document).filter(
-        models.Document.id == document_id,
-        models.Document.session_id == session_id
-    ).first()
-    
-    if not document or not document.storage_path:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Document not found"
-        )
-    
-    import os
-    if not os.path.exists(document.storage_path):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="File not found on server"
-        )
-    
-    from fastapi.responses import FileResponse
-    return FileResponse(
-        path=document.storage_path,
-        filename=document.filename,
-        media_type="application/pdf"
-    )

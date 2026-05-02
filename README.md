@@ -8,7 +8,6 @@ A collaborative RAG (Retrieval-Augmented Generation) chatbot with session manage
 - 👥 **Session Management** - Create and join collaborative chat sessions
 - 📄 **RAG Pipeline** - Upload PDFs and get AI answers with document citations
 - ⚡ **Real-time Collaboration** - Instant multi-user sync with "Who's Uploading" indicators
-- 👁️ **Document Viewing** - Securely view original PDFs directly from the chat session
 - 🧠 **ChromaDB Integration** - High-speed vector search for large documents
 - 🚀 **Optimized Performance** - Async background processing for instant upload feedback
 - 🎨 **Modern UI** - Premium design with React, TypeScript, and Framer Motion
@@ -198,7 +197,6 @@ The frontend will be available at: **http://localhost:8080**
 1. **Upload**: Click the attachment icon to upload a PDF.
 2. **Real-time Status**: You and your teammates will see a "Processing" banner showing who is currently uploading.
 3. **Instant Feedback**: Uploads are processed in the background, appearing in the chat list immediately.
-4. **View**: Click on any document in the "Session Files" list to open the original PDF in a new secure tab.
 
 ### 5. Session Management
 
@@ -414,6 +412,6 @@ For issues and questions:
 - [x] Phase 4: PDF Upload & Processing
 - [x] Phase 5: RAG Implementation with Vector Database
 - [x] Phase 6: Real-time WebSocket Support
-- [x] Phase 7: Team Collaboration (Shared upload status, Secure viewing)
+- [x] Phase 7: Team Collaboration (Shared upload status)
 - [x] Phase 8: Performance Optimization (Background async tasks)
 - [ ] Phase 9: Advanced Analytics & Export
