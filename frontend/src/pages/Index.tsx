@@ -6,13 +6,22 @@ import TypingIndicator from "@/components/TypingIndicator";
 import PdfUploadBanner, { UploadedPdf } from "@/components/PdfUploadBanner";
 import SessionDetailsDialog from "@/components/SessionDetailsDialog";
 import EmptyState from "@/components/EmptyState";
-import { Menu, Loader2, FileText, X, PanelLeft } from "lucide-react";
+import { Menu, Loader2, FileText, X, PanelLeft, ChevronDown, Crown, Users } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSessionsList } from "@/hooks/useSessions";
 import { useMessages, useSendMessage } from "@/hooks/useMessages";
 import { useDocuments, useUploadDocument, useDeleteDocument } from "@/hooks/useDocuments";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuLabel, 
+  DropdownMenuSeparator, 
+  DropdownMenuTrigger 
+} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 
 const Index = () => {
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -47,10 +56,23 @@ const Index = () => {
   const { data: documents = [] } = useDocuments(activeId);
   const { data: isThinking = false } = useQuery({ 
     queryKey: ['thinking', activeId], 
-    queryFn: () => false, // Initial value/dummy function
+    queryFn: () => false, 
     enabled: !!activeId,
     initialData: false 
   });
+
+  // Automatically clear activeId if the session no longer exists (deleted/left)
+  useEffect(() => {
+    if (activeId && sessions.length > 0) {
+      const sessionExists = sessions.some(s => s.id === activeId);
+      if (!sessionExists) {
+        console.log("Active session no longer exists, clearing activeId");
+        setActiveId(null);
+      }
+    } else if (activeId && sessions.length === 0 && !isLoading) {
+      setActiveId(null);
+    }
+  }, [sessions, activeId, isLoading]);
   const sendMessageMutation = useSendMessage();
   const uploadDocumentMutation = useUploadDocument();
   const deleteDocumentMutation = useDeleteDocument();
@@ -179,32 +201,39 @@ const Index = () => {
       </div>
 
       <div className="flex flex-1 flex-col min-w-0">
-        <div className="flex items-center gap-3 border-b border-border px-4 py-3 md:px-6">
+        <div className="flex items-center gap-3 border-b border-border px-4 py-3 md:px-6 relative">
           <button 
             onClick={() => setSidebarOpen(!sidebarOpen)} 
-            className="text-muted-foreground hover:text-foreground transition-colors"
+            className="text-muted-foreground hover:text-foreground transition-colors md:hidden"
           >
             <PanelLeft className="h-5 w-5" />
           </button>
+          
           <div 
-            className="flex-1 cursor-pointer hover:bg-secondary/50 py-1.5 px-3 rounded-lg transition-colors -ml-3"
+            className="flex-1 cursor-pointer hover:bg-secondary/50 py-1.5 px-3 rounded-lg transition-all -ml-3 group flex items-center justify-between"
             onClick={() => activeId && setSessionDetailsOpen(true)}
           >
-            {activeSession && (
-              <div>
-                <h2 className="text-sm font-medium text-foreground flex items-center gap-2">
-                  {activeSession.name}
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  {activeSession.member_count} {activeSession.member_count === 1 ? "member" : "members"}
-                </p>
+            {activeSession ? (
+              <div className="flex items-center gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    {activeSession.name}
+                    <ChevronDown className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                  </h2>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-bold">
+                    {activeSession.member_count} {activeSession.member_count === 1 ? "member" : "members"}
+                  </p>
+                </div>
               </div>
+            ) : (
+              <div className="text-sm text-muted-foreground font-medium">Select a session</div>
             )}
           </div>
+
           {activeId && (
-            <div className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-neon-cyan animate-pulse" />
-              <span className="text-xs text-muted-foreground">Online</span>
+            <div className="flex items-center gap-1.5 bg-secondary/30 px-2.5 py-1 rounded-full border border-border/50 shadow-sm">
+              <span className="h-1.5 w-1.5 rounded-full bg-neon-cyan animate-pulse shadow-[0_0_8px_hsl(var(--neon-cyan))]" />
+              <span className="text-[10px] font-medium text-muted-foreground">Live</span>
             </div>
           )}
         </div>
@@ -235,20 +264,35 @@ const Index = () => {
           )}
         </div>
 
-        {/* Uploading Files Banner */}
-        <PdfUploadBanner 
-          files={uploadingFiles} 
-          onRemove={(name) => queryClient.setQueryData(['uploading', activeId], (old: any) => (old || []).filter((f: any) => f.name !== name))} 
-        />
-
-        {/* Uploaded Documents List */}
-        {activeId && documents.length > 0 && (
-          <div className="mx-6 mb-2 flex flex-wrap gap-2 py-2 px-3 rounded-xl bg-card/50 border border-border/50">
+        {/* Session Files List (includes currently uploading files) */}
+        {activeId && (documents.length > 0 || uploadingFiles.length > 0) && (
+          <div className="mx-6 mb-2 flex flex-wrap gap-2 py-2 px-3 rounded-xl glass border border-border/50">
             <div className="flex items-center gap-1.5 mr-2">
               <FileText className="h-3.5 w-3.5 text-primary" />
               <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Session Files:</span>
             </div>
-            {documents.map((doc) => (
+            
+            {/* Uploading Files (only visible to uploader) */}
+            {uploadingFiles.map((f) => (
+              <div 
+                key={f.name} 
+                className="flex items-center gap-2 rounded-lg bg-primary/10 px-2 py-1 text-[11px] text-foreground border border-primary/20 group"
+              >
+                <span className="max-w-[120px] truncate italic opacity-70">{f.name}</span>
+                <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                <button
+                  onClick={() => queryClient.setQueryData(['uploading', activeId], (old: any) => (old || []).filter((u: any) => u.name !== f.name))}
+                  className="p-0.5 rounded-full hover:bg-destructive/20 hover:text-destructive transition-colors opacity-60 group-hover:opacity-100"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+
+            {/* Ready Documents */}
+            {documents
+              .filter(doc => !uploadingFiles.some(f => f.name === doc.filename))
+              .map((doc) => (
               <div 
                 key={doc.id} 
                 className="flex items-center gap-2 rounded-lg bg-secondary/50 px-2 py-1 text-[11px] text-foreground border border-border/30 group"

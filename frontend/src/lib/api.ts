@@ -117,6 +117,10 @@ export const sessionApi = {
     async deleteSession(sessionId: string): Promise<void> {
         await api.delete(`/api/sessions/${sessionId}`);
     },
+
+    async removeMember(sessionId: string, userId: string): Promise<void> {
+        await api.delete(`/api/sessions/${sessionId}/members/${userId}`);
+    },
 };
 
 // ============ Message API ============

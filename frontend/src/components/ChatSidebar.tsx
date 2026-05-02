@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageSquare,
@@ -42,8 +42,8 @@ const ChatSidebar = ({
   onSessionCreated,
   onSessionJoined,
 }: ChatSidebarProps) => {
-  const [groupOpen, setGroupOpen] = useState(true);
-  const [privateOpen, setPrivateOpen] = useState(true);
+  const [groupOpen, setGroupOpen] = useState(false);
+  const [privateOpen, setPrivateOpen] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [joinDialogOpen, setJoinDialogOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -66,6 +66,14 @@ const ChatSidebar = ({
       .filter((s) => s.role === "member" && s.name.toLowerCase().includes(searchQuery.toLowerCase()))
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   }, [sessions, searchQuery]);
+
+  // Auto-expand groups when searching
+  useEffect(() => {
+    if (searchQuery.trim().length > 0) {
+      setGroupOpen(true);
+      setPrivateOpen(true);
+    }
+  }, [searchQuery]);
 
   const handleDelete = (sessionId: string, role: string) => {
     if (role === "owner") {
@@ -149,86 +157,96 @@ const ChatSidebar = ({
           </div>
 
           {/* Owned Sessions */}
-          <button
-            onClick={() => setGroupOpen(!groupOpen)}
-            className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-sidebar-foreground hover:bg-secondary transition-colors"
-          >
-            <Crown className="h-4 w-4 text-yellow-500" />
-            <span className="font-medium">My Sessions</span>
-            <ChevronDown
-              className={cn(
-                "ml-auto h-4 w-4 text-muted-foreground transition-transform",
-                groupOpen && "rotate-180"
-              )}
-            />
-          </button>
-          <AnimatePresence>
-            {groupOpen && (
-              <motion.div
-                initial={{ height: 0 }}
-                animate={{ height: "auto" }}
-                exit={{ height: 0 }}
-                className="overflow-hidden"
-              >
-                {ownedSessions.length === 0 ? (
-                  <p className="py-2 pl-8 text-xs text-muted-foreground italic">-- Empty --</p>
-                ) : (
-                  ownedSessions.map((session) => (
-                    <SessionItem
-                      key={session.id}
-                      session={session}
-                      active={session.id === activeId}
-                      onSelect={onSelect}
-                      onDelete={handleDelete}
-                      onCopyCode={handleCopyCode}
-                      copiedCode={copiedCode}
-                    />
-                  ))
+          <div className="relative">
+            <button
+              onClick={() => setGroupOpen(!groupOpen)}
+              className="sticky top-0 z-10 flex w-full items-center gap-2.5 rounded-xl px-3 py-3.5 text-[13px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-all group bg-sidebar/95 backdrop-blur-sm shadow-sm border-b border-border/10"
+            >
+              <Crown className="h-4 w-4 text-yellow-500 drop-shadow-[0_0_8px_rgba(234,179,8,0.3)]" />
+              <span>My Sessions</span>
+              <span className="ml-1 px-2 py-0.5 rounded-full bg-secondary/80 text-[10px] font-bold">{ownedSessions.length}</span>
+              <ChevronDown
+                className={cn(
+                  "ml-auto h-4 w-4 transition-transform duration-300 text-muted-foreground/50 group-hover:text-foreground",
+                  groupOpen && "rotate-180"
                 )}
-              </motion.div>
-            )}
-          </AnimatePresence>
+              />
+            </button>
+            <AnimatePresence initial={false}>
+              {groupOpen && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="pt-2 flex flex-col gap-0.5 pb-3">
+                    {ownedSessions.length === 0 ? (
+                      <p className="py-3 pl-10 text-xs text-muted-foreground/50 italic">No owned sessions</p>
+                    ) : (
+                      ownedSessions.map((session) => (
+                        <SessionItem
+                          key={session.id}
+                          session={session}
+                          active={session.id === activeId}
+                          onSelect={onSelect}
+                          onDelete={handleDelete}
+                          onCopyCode={handleCopyCode}
+                          copiedCode={copiedCode}
+                        />
+                      ))
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
           {/* Joined Sessions */}
-          <button
-            onClick={() => setPrivateOpen(!privateOpen)}
-            className="mt-1 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-sidebar-foreground hover:bg-secondary transition-colors"
-          >
-            <Users className="h-4 w-4 text-muted-foreground" />
-            <span className="font-medium">Joined</span>
-            <ChevronDown
-              className={cn(
-                "ml-auto h-4 w-4 text-muted-foreground transition-transform",
-                privateOpen && "rotate-180"
-              )}
-            />
-          </button>
-          <AnimatePresence>
-            {privateOpen && (
-              <motion.div
-                initial={{ height: 0 }}
-                animate={{ height: "auto" }}
-                exit={{ height: 0 }}
-                className="overflow-hidden"
-              >
-                {memberSessions.length === 0 ? (
-                  <p className="py-2 pl-8 text-xs text-muted-foreground italic">-- Empty --</p>
-                ) : (
-                  memberSessions.map((session) => (
-                    <SessionItem
-                      key={session.id}
-                      session={session}
-                      active={session.id === activeId}
-                      onSelect={onSelect}
-                      onDelete={handleDelete}
-                      onCopyCode={handleCopyCode}
-                      copiedCode={copiedCode}
-                    />
-                  ))
+          <div className="mt-4 relative">
+            <button
+              onClick={() => setPrivateOpen(!privateOpen)}
+              className="sticky top-0 z-10 flex w-full items-center gap-2.5 rounded-xl px-3 py-3.5 text-[13px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-all group bg-sidebar/95 backdrop-blur-sm shadow-sm border-b border-border/10"
+            >
+              <Users className="h-4 w-4 text-primary/70" />
+              <span>Joined Sessions</span>
+              <span className="ml-1 px-2 py-0.5 rounded-full bg-secondary/80 text-[10px] font-bold">{memberSessions.length}</span>
+              <ChevronDown
+                className={cn(
+                  "ml-auto h-4 w-4 transition-transform duration-300 text-muted-foreground/50 group-hover:text-foreground",
+                  privateOpen && "rotate-180"
                 )}
-              </motion.div>
-            )}
-          </AnimatePresence>
+              />
+            </button>
+            <AnimatePresence initial={false}>
+              {privateOpen && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="pt-2 flex flex-col gap-0.5 pb-2">
+                    {memberSessions.length === 0 ? (
+                      <p className="py-3 pl-10 text-xs text-muted-foreground/50 italic">No joined sessions</p>
+                    ) : (
+                      memberSessions.map((session) => (
+                        <SessionItem
+                          key={session.id}
+                          session={session}
+                          active={session.id === activeId}
+                          onSelect={onSelect}
+                          onDelete={handleDelete}
+                          onCopyCode={handleCopyCode}
+                          copiedCode={copiedCode}
+                        />
+                      ))
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
 
         {/* User */}
@@ -295,43 +313,59 @@ const SessionItem = ({
 
   return (
     <motion.div
-      initial={{ opacity: 0, x: -10 }}
-      animate={{ opacity: 1, x: 0 }}
+      initial={{ opacity: 0, y: 5 }}
+      animate={{ opacity: 1, y: 0 }}
       className={cn(
-        "group ml-4 flex items-center gap-2 rounded-lg px-3 py-2 text-sm cursor-pointer transition-colors",
+        "group mx-1 mb-0.5 flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm cursor-pointer transition-all duration-200 border border-transparent",
         active
-          ? "bg-primary/15 text-primary neon-border"
-          : "text-sidebar-foreground hover:bg-secondary"
+          ? "bg-primary/10 text-primary border-primary/20 shadow-[0_0_15px_rgba(var(--primary-rgb),0.1)]"
+          : "text-sidebar-foreground/80 hover:bg-secondary/80 hover:text-foreground hover:border-border/50"
       )}
       onClick={() => onSelect(session.id)}
     >
-      <MessageSquare className="h-3.5 w-3.5 shrink-0" />
-      <span className="truncate flex-1">{session.name}</span>
-      {session.member_count > 1 && (
-        <span className="text-[10px] text-muted-foreground">{session.member_count}</span>
-      )}
-      {isOwner && (
+      <div className={cn(
+        "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors",
+        active ? "bg-primary/20 text-primary" : "bg-secondary/50 text-muted-foreground group-hover:bg-secondary group-hover:text-foreground"
+      )}>
+        <MessageSquare className="h-4 w-4" />
+      </div>
+      
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between gap-1">
+          <span className="truncate font-medium">{session.name}</span>
+          {session.member_count > 1 && (
+            <div className="flex items-center gap-1 text-[10px] text-muted-foreground bg-secondary/50 px-1.5 py-0.5 rounded-full">
+              <Users className="h-2.5 w-2.5" />
+              {session.member_count}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">
+        {isOwner && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onCopyCode(session.join_code);
+            }}
+            className="p-1.5 rounded-md hover:bg-primary/20 text-muted-foreground hover:text-primary transition-colors"
+            title="Copy join code"
+          >
+            {isCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          </button>
+        )}
         <button
           onClick={(e) => {
             e.stopPropagation();
-            onCopyCode(session.join_code);
+            onDelete(session.id, session.role);
           }}
-          className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary"
-          title="Copy join code"
+          className="p-1.5 rounded-md hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors"
+          title={isOwner ? "Delete session" : "Leave session"}
         >
-          {isCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          <Trash2 className="h-3.5 w-3.5" />
         </button>
-      )}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete(session.id, session.role);
-        }}
-        className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-        title={isOwner ? "Delete session" : "Leave session"}
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
+      </div>
     </motion.div>
   );
 };

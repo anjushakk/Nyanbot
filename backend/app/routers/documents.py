@@ -39,22 +39,35 @@ def _process_document_sync(document_id, session_id, file_path, filename, user_na
         # Extract text from PDF
         text = pdf_processor.extract_text(file_path)
         if not text.strip():
-            print(f"DEBUG: No text extracted from {filename}")
+            print(f"DEBUG: No text extracted from {filename}. Deleting document record.")
+            # Delete the document and file since it's useless for RAG
+            db.query(models.Document).filter(models.Document.id == document_id).delete()
+            db.commit()
+            if os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                except:
+                    pass # Windows might still lock it
+                    
+            from sqlalchemy.orm import joinedload
+            from fastapi.encoders import jsonable_encoder
             system_message = models.Message(
                 session_id=session_id,
                 user_id=None,
-                content=f"⚠️ **{filename}** contains no readable text and couldn't be processed for RAG.",
+                content=f"⚠️ **{filename}** contains no readable text and couldn't be processed for RAG. It has been removed.",
                 role="system"
             )
             db.add(system_message)
             db.commit()
             db.refresh(system_message)
-            return system_message
+            # Eager load and serialize
+            db.query(models.Message).options(joinedload(models.Message.user)).filter(models.Message.id == system_message.id).first()
+            return jsonable_encoder(schemas.MessageResponse.model_validate(system_message))
 
         print(f"DEBUG: Extracted {len(text)} characters from PDF")
         
         # Chunk the text
-        chunks = pdf_processor.chunk_text(text, chunk_size=200, overlap=40)
+        chunks = pdf_processor.chunk_text(text, chunk_size=600, overlap=100)
         print(f"DEBUG: Created {len(chunks)} chunks")
         
         if chunks:
@@ -95,9 +108,17 @@ def _process_document_sync(document_id, session_id, file_path, filename, user_na
         db.add(system_message)
         db.commit()
         db.refresh(system_message)
-        return system_message
+        
+        # Eager load user and serialize before session closes
+        from sqlalchemy.orm import joinedload
+        from fastapi.encoders import jsonable_encoder
+        db.query(models.Message).options(joinedload(models.Message.user)).filter(models.Message.id == system_message.id).first()
+        return jsonable_encoder(schemas.MessageResponse.model_validate(system_message))
     except Exception as e:
         print(f"Error in background processing for {document_id}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return None
         import traceback
         traceback.print_exc()
         return None
@@ -122,10 +143,8 @@ async def process_document_background(
     if system_message:
         # Broadcast readiness via websocket
         from app.services.websocket_manager import manager
-        from fastapi.encoders import jsonable_encoder
-        from app import schemas
-        msg_json = jsonable_encoder(schemas.MessageResponse.model_validate(system_message))
-        await manager.broadcast_to_session(session_id, {"type": "new_message", "message": msg_json})
+        # system_message is already a dict from _process_document_sync
+        await manager.broadcast_to_session(session_id, {"type": "new_message", "message": system_message})
         await manager.broadcast_to_session(session_id, {"type": "document_update"})
 
 
@@ -259,7 +278,12 @@ def _create_initial_system_message_sync(session_id, user_name, filename, db_fact
         db.add(system_message)
         db.commit()
         db.refresh(system_message)
-        return system_message
+        
+        # Eager load user and serialize before session closes
+        from sqlalchemy.orm import joinedload
+        from fastapi.encoders import jsonable_encoder
+        db.query(models.Message).options(joinedload(models.Message.user)).filter(models.Message.id == system_message.id).first()
+        return jsonable_encoder(schemas.MessageResponse.model_validate(system_message))
     finally:
         db.close()
 
@@ -330,11 +354,7 @@ def delete_document(
             detail="Only the uploader or session owner can delete this document"
         )
     
-    # Delete file from disk
-    if os.path.exists(document.storage_path):
-        os.remove(document.storage_path)
-    
-    # Delete from ChromaDB
+    # 1. Delete from ChromaDB
     try:
         from app.services.chroma_store import ChromaStore
         chroma_store = ChromaStore()
@@ -342,9 +362,32 @@ def delete_document(
     except Exception as e:
         print(f"Error deleting from ChromaDB: {e}")
 
-    # Delete document record
+    # 2. Delete SQL chunks
+    db.query(models.Chunk).filter(models.Chunk.document_id == document_id).delete()
+    
+    # 3. Delete document record
+    storage_path = document.storage_path
     db.delete(document)
-    db.commit()
+    db.commit() # Commit before deleting file to avoid DB lock issues
+    
+    # 4. Delete file from disk with retry (Windows fix)
+    if storage_path and os.path.exists(storage_path):
+        import time
+        max_retries = 3
+        for i in range(max_retries):
+            try:
+                os.remove(storage_path)
+                print(f"DEBUG: Successfully deleted file {storage_path}")
+                break
+            except PermissionError:
+                if i < max_retries - 1:
+                    print(f"DEBUG: File locked, retrying in 1s... ({i+1}/{max_retries})")
+                    time.sleep(1)
+                else:
+                    print(f"WARNING: Could not delete file {storage_path} after {max_retries} attempts.")
+            except Exception as e:
+                print(f"Error deleting file: {e}")
+                break
     
     # Broadcast document_update
     from app.services.websocket_manager import manager

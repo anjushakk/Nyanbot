@@ -155,3 +155,27 @@ export function useDeleteSession() {
         },
     });
 }
+export function useRemoveMember(sessionId: string) {
+    const queryClient = useQueryClient();
+    const { toast } = useToast();
+
+    return useMutation({
+        mutationFn: (userId: string) => sessionApi.removeMember(sessionId, userId),
+        onSuccess: (_, userId) => {
+            // Invalidate the specific session details to refresh member list
+            queryClient.invalidateQueries({ queryKey: sessionKeys.detail(sessionId) });
+
+            toast({
+                title: "Member removed",
+                description: "The participant has been removed from the session",
+            });
+        },
+        onError: (error: any) => {
+            toast({
+                title: "Failed to remove member",
+                description: error.response?.data?.detail || "Something went wrong",
+                variant: "destructive",
+            });
+        },
+    });
+}

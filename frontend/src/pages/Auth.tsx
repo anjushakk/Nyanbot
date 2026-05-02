@@ -13,6 +13,7 @@ const Auth = () => {
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState("");
+    const [successMessage, setSuccessMessage] = useState("");
     const [loading, setLoading] = useState(false);
     const { login, signup } = useAuth();
     const navigate = useNavigate();
@@ -20,11 +21,13 @@ const Auth = () => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError("");
+        setSuccessMessage("");
         setLoading(true);
 
         try {
             if (isLogin) {
                 await login(email, password);
+                navigate("/");
             } else {
                 if (!name.trim()) {
                     setError("Name is required");
@@ -32,8 +35,10 @@ const Auth = () => {
                     return;
                 }
                 await signup(name.trim(), email, password);
+                setIsLogin(true);
+                setSuccessMessage("Account created successfully! Please sign in.");
+                setPassword("");
             }
-            navigate("/");
         } catch (err: any) {
             setError(err.message || "Something went wrong");
         } finally {
@@ -44,6 +49,7 @@ const Auth = () => {
     const toggleMode = () => {
         setIsLogin(!isLogin);
         setError("");
+        setSuccessMessage("");
     };
 
     return (
@@ -159,6 +165,16 @@ const Auth = () => {
                                         </button>
                                     </div>
                                 </div>
+
+                                {successMessage && (
+                                    <motion.p
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        className="text-sm text-green-500 font-medium bg-green-500/10 p-2.5 rounded-lg border border-green-500/20"
+                                    >
+                                        {successMessage}
+                                    </motion.p>
+                                )}
 
                                 {error && (
                                     <motion.p

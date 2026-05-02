@@ -2,14 +2,13 @@
 import random
 import string
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app import models, schemas
 from app.database import get_db
 from app.routers.auth import get_current_user
-from app.services.websocket_manager import manager
 
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
@@ -130,7 +129,6 @@ def get_session(
 @router.post("/join", response_model=schemas.SessionResponse)
 def join_session(
     join_data: schemas.SessionJoin,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
@@ -166,32 +164,8 @@ def join_session(
     )
     
     db.add(member)
-    
-    # Create system message for join
-    system_msg = models.Message(
-        session_id=session.id,
-        content=f"**{current_user.name}** has joined the session.",
-        role="system"
-    )
-    db.add(system_msg)
-    
     db.commit()
     db.refresh(session)
-    
-    from fastapi.encoders import jsonable_encoder
-    msg_json = jsonable_encoder(schemas.MessageResponse.model_validate(system_msg))
-    
-    # Broadcast events to connected clients
-    background_tasks.add_task(
-        manager.broadcast_to_session, 
-        str(session.id), 
-        {"type": "new_message", "message": msg_json}
-    )
-    background_tasks.add_task(
-        manager.broadcast_to_session, 
-        str(session.id), 
-        {"type": "session_update"}
-    )
     
     return session
 
@@ -199,7 +173,6 @@ def join_session(
 @router.delete("/{session_id}/leave", status_code=status.HTTP_200_OK)
 def leave_session(
     session_id: str,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
@@ -234,96 +207,9 @@ def leave_session(
     
     # Remove membership
     db.delete(membership)
-    
-    # Create system message for leave
-    system_msg = models.Message(
-        session_id=session.id,
-        content=f"**{current_user.name}** has left the session.",
-        role="system"
-    )
-    db.add(system_msg)
-    
     db.commit()
-    
-    from fastapi.encoders import jsonable_encoder
-    msg_json = jsonable_encoder(schemas.MessageResponse.model_validate(system_msg))
-    
-    # Broadcast events to connected clients
-    background_tasks.add_task(
-        manager.broadcast_to_session, 
-        str(session.id), 
-        {"type": "new_message", "message": msg_json}
-    )
-    background_tasks.add_task(
-        manager.broadcast_to_session, 
-        str(session.id), 
-        {"type": "session_update"}
-    )
     
     return {"message": "Successfully left the session"}
-
-
-@router.delete("/{session_id}/members/{user_id}", status_code=status.HTTP_200_OK)
-def remove_member(
-    session_id: str,
-    user_id: str,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
-):
-    """Remove a member from a session (owner only)."""
-    # Get session
-    session = db.query(models.Session).filter(models.Session.id == session_id).first()
-    
-    if not session:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
-    
-    # Check if current user is the owner
-    if session.owner_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the session owner can remove members"
-        )
-    
-    # Cannot remove self
-    if user_id == current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="You cannot remove yourself. Delete the session instead."
-        )
-    
-    # Find the member to remove
-    membership = db.query(models.SessionMember).filter(
-        models.SessionMember.session_id == session_id,
-        models.SessionMember.user_id == user_id
-    ).first()
-    
-    if not membership:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
-    
-    member_name = membership.user.name
-    
-    # Remove membership
-    db.delete(membership)
-    
-    # Create system message
-    system_msg = models.Message(
-        session_id=session.id,
-        content=f"**{member_name}** was removed from the session by the owner.",
-        role="system"
-    )
-    db.add(system_msg)
-    
-    db.commit()
-    
-    from fastapi.encoders import jsonable_encoder
-    msg_json = jsonable_encoder(schemas.MessageResponse.model_validate(system_msg))
-    
-    # Broadcast events
-    background_tasks.add_task(manager.broadcast_to_session, str(session.id), {"type": "new_message", "message": msg_json})
-    background_tasks.add_task(manager.broadcast_to_session, str(session.id), {"type": "session_update"})
-    
-    return {"message": f"Successfully removed {member_name} from the session"}
 
 
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)

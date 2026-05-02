@@ -87,8 +87,12 @@ class ChromaStore:
 
     def delete_document(self, session_id: str, document_id: str):
         """Delete all chunks belonging to a specific document."""
-        # Use simple filter as document_id is already unique across sessions
         self.collection.delete(
-            where={"document_id": str(document_id)}
+            where={
+                "$and": [
+                    {"session_id": str(session_id)},
+                    {"document_id": str(document_id)}
+                ]
+            }
         )
         print(f"DEBUG: Deleted document {document_id} from ChromaDB")

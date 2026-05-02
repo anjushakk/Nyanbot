@@ -52,17 +52,15 @@ async def send_message(
     )
     
     # 2. Broadcast user message immediately (async)
-    from fastapi.encoders import jsonable_encoder
-    user_msg_json = jsonable_encoder(schemas.MessageResponse.model_validate(user_message))
-    await manager.broadcast_to_session(session_id, {"type": "new_message", "message": user_msg_json})
+    from app.services.websocket_manager import manager
+    await manager.broadcast_to_session(session_id, {"type": "new_message", "message": user_message})
     
     # 3. Add background task for AI processing
-    from app.database import SessionLocal
     background_tasks.add_task(
         process_ai_response_task,
         session_id,
         message_data.content,
-        user_message.id,
+        user_message["id"],
         SessionLocal
     )
     
@@ -73,6 +71,9 @@ def _save_user_message_sync(session_id, user_id, content, db_factory):
     """Synchronous logic to save user message."""
     db = db_factory()
     try:
+        from sqlalchemy.orm import joinedload
+        from fastapi.encoders import jsonable_encoder
+        
         user_message = models.Message(
             session_id=session_id,
             user_id=user_id,
@@ -82,7 +83,10 @@ def _save_user_message_sync(session_id, user_id, content, db_factory):
         db.add(user_message)
         db.commit()
         db.refresh(user_message)
-        return user_message
+        
+        # Eager load user and serialize before session closes
+        db.query(models.Message).options(joinedload(models.Message.user)).filter(models.Message.id == user_message.id).first()
+        return jsonable_encoder(schemas.MessageResponse.model_validate(user_message))
     finally:
         db.close()
 
@@ -122,17 +126,16 @@ def _generate_ai_response_sync(session_id: str, query: str, db_session_factory):
         # Search for relevant context
         context = ""
         try:
+            from app.services.chroma_store import ChromaStore
             chroma_store = ChromaStore()
+            
+            from app.services.embeddings import EmbeddingService
             embedding_service = EmbeddingService()
             query_embedding = embedding_service.generate_query_embedding(query)
-            search_results = chroma_store.search(session_id, query_embedding, k=10)
             
-            if search_results:
-                context = "\n\n".join([
-                    f"[From {res['metadata'].get('filename', 'document')}]: {res['content']}"
-                    for res in search_results
-                ])
-                
+            search_results = chroma_store.search(session_id, query_embedding, k=15)
+            context = "\n\n".join([f"[Source: {r['metadata']['filename']}]: {r['content']}" for r in search_results])
+            
             # Fallback for general queries
             is_summary_query = any(word in query.lower() for word in ["summarize", "summarise", "overview", "what is this", "about", "tell me about"])
             if (len(search_results) < 3 or is_summary_query) and db.query(models.Document).filter(models.Document.session_id == session_id).count() > 0:
@@ -154,7 +157,7 @@ def _generate_ai_response_sync(session_id: str, query: str, db_session_factory):
             processing_docs = db.query(models.Document).filter(models.Document.session_id == session_id).all()
             still_processing = False
             for doc in processing_docs:
-                if db.query(models.Chunk).filter(models.Chunk.document_id == doc.id).count() == 0:
+                if not db.query(models.Chunk).filter(models.Chunk.document_id == doc.id).first():
                     still_processing = True
                     break
             if still_processing:
@@ -169,13 +172,19 @@ def _generate_ai_response_sync(session_id: str, query: str, db_session_factory):
             {"role": msg.role, "content": msg.content}
             for msg in reversed(history[1:]) # Skip the message just sent
         ]
+
+        # Session Info (for awareness)
+        session = db.query(models.Session).filter(models.Session.id == session_id).first()
+        members = db.query(models.User).join(models.SessionMember).filter(models.SessionMember.session_id == session_id).all()
+        session_info = f"Session Name: {session.name}\nParticipants: {', '.join([m.name for m in members])}"
         
         # Generate response
         llm_service = LLMService()
         ai_response_text = llm_service.generate_response(
             query=query,
             context=context,
-            conversation_history=conversation_history
+            conversation_history=conversation_history,
+            session_info=session_info
         )
         
         if doc_count == 0 and not "upload" in ai_response_text.lower():
@@ -192,7 +201,11 @@ def _generate_ai_response_sync(session_id: str, query: str, db_session_factory):
         db.commit()
         db.refresh(ai_message)
         
-        return ai_message
+        # Eager load user (which is None here but good practice) and serialize
+        from sqlalchemy.orm import joinedload
+        from fastapi.encoders import jsonable_encoder
+        db.query(models.Message).options(joinedload(models.Message.user)).filter(models.Message.id == ai_message.id).first()
+        return jsonable_encoder(schemas.MessageResponse.model_validate(ai_message))
         
     except Exception as e:
         print(f"Error in background AI processing: {e}")

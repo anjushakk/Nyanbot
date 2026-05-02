@@ -61,9 +61,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         try {
             // Register user
             await authApi.register({ name, email, password });
-
-            // Auto-login after registration
-            await login(email, password);
         } catch (error: any) {
             const message = error.response?.data?.detail || "Registration failed";
             throw new Error(message);
