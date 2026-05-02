@@ -7,6 +7,7 @@ interface AuthContextType {
     user: User | null;
     login: (email: string, password: string) => Promise<void>;
     signup: (name: string, email: string, password: string) => Promise<void>;
+    updateProfile: (data: { name?: string; avatar?: string | null }) => Promise<void>;
     logout: () => Promise<void>;
     loading: boolean;
 }
@@ -69,6 +70,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
     };
 
+    const updateProfile = async (data: { name?: string; avatar?: string | null }) => {
+        try {
+            const updatedUser = await authApi.updateMe(data);
+            setUser(updatedUser);
+            Cookies.set("user", JSON.stringify(updatedUser), { expires: 7 });
+        } catch (error: any) {
+            const message = error.response?.data?.detail || "Profile update failed";
+            throw new Error(message);
+        }
+    };
+
     const logout = async () => {
         Cookies.remove("access_token");
         Cookies.remove("user");
@@ -76,7 +88,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, login, signup, logout, loading }}>
+        <AuthContext.Provider value={{ user, login, signup, updateProfile, logout, loading }}>
             {children}
         </AuthContext.Provider>
     );

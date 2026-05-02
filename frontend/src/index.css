@@ -11,41 +11,64 @@
 
 @layer base {
   :root {
-    --background: 240 6% 10%;
-    --foreground: 240 5% 92%;
-
-    --card: 240 6% 12%;
-    --card-foreground: 240 5% 92%;
-
-    --popover: 240 6% 14%;
-    --popover-foreground: 240 5% 92%;
-
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
     --primary: 280 80% 60%;
     --primary-foreground: 0 0% 100%;
-
-    --secondary: 240 6% 18%;
-    --secondary-foreground: 240 5% 85%;
-
-    --muted: 240 5% 16%;
-    --muted-foreground: 240 5% 55%;
-
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
     --accent: 320 75% 55%;
     --accent-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 280 80% 60%;
+    --radius: 0.75rem;
+    --neon-glow: 280 80% 60%;
+    --neon-pink: 320 75% 55%;
+    --neon-cyan: 185 75% 55%;
+    --surface-glass: 0 0% 100%;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 280 80% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 280 80% 60%;
+  }
 
+  .dark {
+    --background: 240 6% 10%;
+    --foreground: 240 5% 92%;
+    --card: 240 6% 12%;
+    --card-foreground: 240 5% 92%;
+    --popover: 240 6% 14%;
+    --popover-foreground: 240 5% 92%;
+    --primary: 280 80% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 6% 18%;
+    --secondary-foreground: 240 5% 85%;
+    --muted: 240 5% 16%;
+    --muted-foreground: 240 5% 55%;
+    --accent: 320 75% 55%;
+    --accent-foreground: 0 0% 100%;
     --destructive: 0 72% 55%;
     --destructive-foreground: 0 0% 100%;
-
     --border: 240 5% 20%;
     --input: 240 5% 18%;
     --ring: 280 80% 60%;
-
-    --radius: 0.75rem;
-
     --neon-glow: 280 80% 60%;
     --neon-pink: 320 75% 55%;
     --neon-cyan: 185 75% 55%;
     --surface-glass: 240 6% 14%;
-
     --sidebar-background: 240 6% 8%;
     --sidebar-foreground: 240 5% 85%;
     --sidebar-primary: 280 80% 60%;

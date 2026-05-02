@@ -1,19 +1,16 @@
 """Authentication API endpoints."""
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from typing import Optional
 
 from app import models, schemas, auth
 from app.database import get_db
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
-
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> models.User:
-    """Get the current authenticated user from JWT token (for HTTP)."""
-    return get_current_user_from_token(token, db)
 
 def get_current_user_from_token(token: str, db: Session) -> models.User:
     """Get the current authenticated user from a raw JWT token."""
@@ -32,6 +29,33 @@ def get_current_user_from_token(token: str, db: Session) -> models.User:
         raise credentials_exception
     
     return user
+
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> models.User:
+    """Get the current authenticated user from JWT token (for HTTP)."""
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return get_current_user_from_token(token, db)
+
+
+def get_current_user_flexible(
+    token: Optional[str] = Depends(oauth2_scheme), 
+    token_query: Optional[str] = Query(None, alias="token"),
+    db: Session = Depends(get_db)
+) -> models.User:
+    """Get user from header OR query param 'token' (for direct links)."""
+    actual_token = token or token_query
+    if not actual_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return get_current_user_from_token(actual_token, db)
 
 
 @router.post("/register", response_model=schemas.User, status_code=status.HTTP_201_CREATED)
@@ -83,4 +107,21 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 @router.get("/me", response_model=schemas.User)
 def get_me(current_user: models.User = Depends(get_current_user)):
     """Get current user information."""
+    return current_user
+
+
+@router.put("/me", response_model=schemas.User)
+def update_me(
+    user_update: schemas.UserUpdate, 
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update current user information."""
+    if user_update.name is not None:
+        current_user.name = user_update.name
+    if user_update.avatar is not None:
+        current_user.avatar = user_update.avatar
+        
+    db.commit()
+    db.refresh(current_user)
     return current_user

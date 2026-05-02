@@ -4,18 +4,40 @@ import ChatMessage from "@/components/ChatMessage";
 import ChatInput from "@/components/ChatInput";
 import TypingIndicator from "@/components/TypingIndicator";
 import PdfUploadBanner, { UploadedPdf } from "@/components/PdfUploadBanner";
+import SessionDetailsDialog from "@/components/SessionDetailsDialog";
 import EmptyState from "@/components/EmptyState";
-import { Menu, Loader2, FileText } from "lucide-react";
+import { Menu, Loader2, FileText, X, PanelLeft } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSessionsList } from "@/hooks/useSessions";
 import { useMessages, useSendMessage } from "@/hooks/useMessages";
-import { useDocuments, useUploadDocument } from "@/hooks/useDocuments";
+import { useDocuments, useUploadDocument, useDeleteDocument } from "@/hooks/useDocuments";
 import { useAuth } from "@/hooks/useAuth";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 const Index = () => {
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
+  const [sessionDetailsOpen, setSessionDetailsOpen] = useState(false);
+  
+  const queryClient = useQueryClient();
+  const { data: uploadingFiles = [] } = useQuery({
+    queryKey: ['uploading', activeId],
+    queryFn: () => [],
+    enabled: !!activeId,
+    initialData: []
+  });
+
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 768 && !sidebarOpen) {
+        // Option: automatically open on desktop resize
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [sidebarOpen]);
 
   const { user: currentUser } = useAuth();
 
@@ -23,8 +45,15 @@ const Index = () => {
   const { data: sessions = [], isLoading, error } = useSessionsList();
   const { data: messages = [], isLoading: messagesLoading } = useMessages(activeId);
   const { data: documents = [] } = useDocuments(activeId);
+  const { data: isThinking = false } = useQuery({ 
+    queryKey: ['thinking', activeId], 
+    queryFn: () => false, // Initial value/dummy function
+    enabled: !!activeId,
+    initialData: false 
+  });
   const sendMessageMutation = useSendMessage();
   const uploadDocumentMutation = useUploadDocument();
+  const deleteDocumentMutation = useDeleteDocument();
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => {
@@ -56,11 +85,39 @@ const Index = () => {
 
   const handleUpload = async (files: FileList) => {
     if (!activeId) return;
+    
+    const newFiles = Array.from(files).map(f => ({
+      name: f.name,
+      status: "uploading" as const,
+      user: "You"
+    }));
+    
+    queryClient.setQueryData(['uploading', activeId], (old: any) => [...(old || []), ...newFiles]);
+
     Array.from(files).forEach((file) => {
       uploadDocumentMutation.mutate({
         sessionId: activeId,
         file,
+      }, {
+        onSuccess: () => {
+          queryClient.setQueryData(['uploading', activeId], (old: any) => 
+            (old || []).filter((f: any) => f.name !== file.name)
+          );
+        },
+        onError: () => {
+          queryClient.setQueryData(['uploading', activeId], (old: any) => 
+            (old || []).filter((f: any) => f.name !== file.name)
+          );
+        }
       });
+    });
+  };
+
+  const handleRemoveDocument = (documentId: string) => {
+    if (!activeId) return;
+    deleteDocumentMutation.mutate({
+      sessionId: activeId,
+      documentId,
     });
   };
 
@@ -102,28 +159,40 @@ const Index = () => {
         )}
       </AnimatePresence>
 
-      <div className={`fixed inset-y-0 left-0 z-50 md:relative md:z-auto transition-transform md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
-        <ChatSidebar
-          sessions={sessions}
-          activeId={activeId}
-          onSelect={(id) => {
-            setActiveId(id);
-            setSidebarOpen(false);
-          }}
-          onSessionCreated={handleSessionCreated}
-          onSessionJoined={handleSessionJoined}
-        />
+      <div 
+        className={`fixed inset-y-0 left-0 z-50 md:relative md:z-auto transition-all duration-300 overflow-hidden bg-sidebar h-full ${
+          sidebarOpen ? "translate-x-0 w-[280px]" : "-translate-x-full md:translate-x-0 w-[280px] md:w-0"
+        }`}
+      >
+        <div className="w-[280px] h-full">
+          <ChatSidebar
+            sessions={sessions}
+            activeId={activeId}
+            onSelect={(id) => {
+              setActiveId(id);
+              if (window.innerWidth < 768) setSidebarOpen(false);
+            }}
+            onSessionCreated={handleSessionCreated}
+            onSessionJoined={handleSessionJoined}
+          />
+        </div>
       </div>
 
       <div className="flex flex-1 flex-col min-w-0">
         <div className="flex items-center gap-3 border-b border-border px-4 py-3 md:px-6">
-          <button onClick={() => setSidebarOpen(true)} className="md:hidden text-muted-foreground hover:text-foreground">
-            <Menu className="h-5 w-5" />
+          <button 
+            onClick={() => setSidebarOpen(!sidebarOpen)} 
+            className="text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <PanelLeft className="h-5 w-5" />
           </button>
-          <div className="flex-1">
+          <div 
+            className="flex-1 cursor-pointer hover:bg-secondary/50 py-1.5 px-3 rounded-lg transition-colors -ml-3"
+            onClick={() => activeId && setSessionDetailsOpen(true)}
+          >
             {activeSession && (
               <div>
-                <h2 className="text-sm font-medium text-foreground">
+                <h2 className="text-sm font-medium text-foreground flex items-center gap-2">
                   {activeSession.name}
                 </h2>
                 <p className="text-xs text-muted-foreground">
@@ -151,20 +220,26 @@ const Index = () => {
             <>
               <AnimatePresence mode="popLayout">
                 {messages.map((msg) => (
-                  <ChatMessage
-                    key={msg.id}
-                    message={{
-                      ...msg,
-                      timestamp: new Date(msg.created_at)
-                    }}
-                    isOwnMessage={msg.user_id === currentUser?.id}
-                  />
-                ))}
-              </AnimatePresence>
-              {sendMessageMutation.isPending && <TypingIndicator />}
-            </>
+                   <ChatMessage
+                     key={msg.id}
+                     message={{
+                       ...msg,
+                       timestamp: new Date(msg.created_at)
+                     }}
+                     isOwnMessage={msg.user_id === currentUser?.id}
+                   />
+                 ))}
+               </AnimatePresence>
+               {(sendMessageMutation.isPending || isThinking) && <TypingIndicator />}
+             </>
           )}
         </div>
+
+        {/* Uploading Files Banner */}
+        <PdfUploadBanner 
+          files={uploadingFiles} 
+          onRemove={(name) => queryClient.setQueryData(['uploading', activeId], (old: any) => (old || []).filter((f: any) => f.name !== name))} 
+        />
 
         {/* Uploaded Documents List */}
         {activeId && documents.length > 0 && (
@@ -174,8 +249,22 @@ const Index = () => {
               <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Session Files:</span>
             </div>
             {documents.map((doc) => (
-              <div key={doc.id} className="flex items-center gap-1.5 rounded-lg bg-secondary/50 px-2 py-1 text-[11px] text-foreground border border-border/30">
+              <div 
+                key={doc.id} 
+                className="flex items-center gap-2 rounded-lg bg-secondary/50 px-2 py-1 text-[11px] text-foreground border border-border/30 group cursor-pointer hover:bg-secondary transition-colors"
+                onClick={() => {
+                  const token = Cookies.get('access_token');
+                  window.open(`${import.meta.env.VITE_API_BASE_URL}/api/sessions/${activeId}/documents/${doc.id}/view?token=${token}`, '_blank');
+                }}
+              >
                 <span className="max-w-[120px] truncate">{doc.filename}</span>
+                <button
+                  onClick={() => handleRemoveDocument(doc.id)}
+                  className="p-0.5 rounded-full hover:bg-destructive/20 hover:text-destructive transition-colors opacity-60 group-hover:opacity-100"
+                  title="Remove document"
+                >
+                  <X className="h-3 w-3" />
+                </button>
               </div>
             ))}
           </div>
@@ -188,6 +277,12 @@ const Index = () => {
           placeholder={!activeId ? "Create or join a session to start chatting..." : undefined}
         />
       </div>
+
+      <SessionDetailsDialog 
+        sessionId={activeId}
+        open={sessionDetailsOpen}
+        onOpenChange={setSessionDetailsOpen}
+      />
     </div>
   );
 };

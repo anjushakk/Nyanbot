@@ -80,6 +80,11 @@ export const authApi = {
         const response = await api.get<User>("/api/auth/me");
         return response.data;
     },
+
+    async updateMe(data: { name?: string; avatar?: string | null }): Promise<User> {
+        const response = await api.put<User>("/api/auth/me", data);
+        return response.data;
+    },
 };
 
 // ============ Session API ============

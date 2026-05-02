@@ -2,13 +2,14 @@
 import random
 import string
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app import models, schemas
 from app.database import get_db
 from app.routers.auth import get_current_user
+from app.services.websocket_manager import manager
 
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
@@ -129,6 +130,7 @@ def get_session(
 @router.post("/join", response_model=schemas.SessionResponse)
 def join_session(
     join_data: schemas.SessionJoin,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
@@ -164,8 +166,32 @@ def join_session(
     )
     
     db.add(member)
+    
+    # Create system message for join
+    system_msg = models.Message(
+        session_id=session.id,
+        content=f"**{current_user.name}** has joined the session.",
+        role="system"
+    )
+    db.add(system_msg)
+    
     db.commit()
     db.refresh(session)
+    
+    from fastapi.encoders import jsonable_encoder
+    msg_json = jsonable_encoder(schemas.MessageResponse.model_validate(system_msg))
+    
+    # Broadcast events to connected clients
+    background_tasks.add_task(
+        manager.broadcast_to_session, 
+        str(session.id), 
+        {"type": "new_message", "message": msg_json}
+    )
+    background_tasks.add_task(
+        manager.broadcast_to_session, 
+        str(session.id), 
+        {"type": "session_update"}
+    )
     
     return session
 
@@ -173,6 +199,7 @@ def join_session(
 @router.delete("/{session_id}/leave", status_code=status.HTTP_200_OK)
 def leave_session(
     session_id: str,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
@@ -207,7 +234,31 @@ def leave_session(
     
     # Remove membership
     db.delete(membership)
+    
+    # Create system message for leave
+    system_msg = models.Message(
+        session_id=session.id,
+        content=f"**{current_user.name}** has left the session.",
+        role="system"
+    )
+    db.add(system_msg)
+    
     db.commit()
+    
+    from fastapi.encoders import jsonable_encoder
+    msg_json = jsonable_encoder(schemas.MessageResponse.model_validate(system_msg))
+    
+    # Broadcast events to connected clients
+    background_tasks.add_task(
+        manager.broadcast_to_session, 
+        str(session.id), 
+        {"type": "new_message", "message": msg_json}
+    )
+    background_tasks.add_task(
+        manager.broadcast_to_session, 
+        str(session.id), 
+        {"type": "session_update"}
+    )
     
     return {"message": "Successfully left the session"}
 

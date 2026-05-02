@@ -7,9 +7,11 @@ A collaborative RAG (Retrieval-Augmented Generation) chatbot with session manage
 - 🔐 **JWT Authentication** - Secure user registration and login
 - 👥 **Session Management** - Create and join collaborative chat sessions
 - 📄 **RAG Pipeline** - Upload PDFs and get AI answers with document citations
-- ⚡ **Real-time Collaboration** - Instant multi-user sync via WebSockets
+- ⚡ **Real-time Collaboration** - Instant multi-user sync with "Who's Uploading" indicators
+- 👁️ **Document Viewing** - Securely view original PDFs directly from the chat session
 - 🧠 **ChromaDB Integration** - High-speed vector search for large documents
-- 🎨 **Modern UI** - Premium design with React, TypeScript, and shadcn/ui
+- 🚀 **Optimized Performance** - Async background processing for instant upload feedback
+- 🎨 **Modern UI** - Premium design with React, TypeScript, and Framer Motion
 
 ## Tech Stack
 
@@ -191,7 +193,14 @@ The frontend will be available at: **http://localhost:8080**
 3. Click **"Join Session"**
 4. The session will appear in your "Joined" section
 
-### 4. Session Management
+### 4. Document Collaboration
+
+1. **Upload**: Click the attachment icon to upload a PDF.
+2. **Real-time Status**: You and your teammates will see a "Processing" banner showing who is currently uploading.
+3. **Instant Feedback**: Uploads are processed in the background, appearing in the chat list immediately.
+4. **View**: Click on any document in the "Session Files" list to open the original PDF in a new secure tab.
+
+### 5. Session Management
 
 - **My Sessions** - Sessions you created (you can delete them)
 - **Joined** - Sessions you joined (you can leave them)
@@ -405,4 +414,6 @@ For issues and questions:
 - [x] Phase 4: PDF Upload & Processing
 - [x] Phase 5: RAG Implementation with Vector Database
 - [x] Phase 6: Real-time WebSocket Support
-- [ ] Phase 7: Advanced Features (Search, Export, etc.)
+- [x] Phase 7: Team Collaboration (Shared upload status, Secure viewing)
+- [x] Phase 8: Performance Optimization (Background async tasks)
+- [ ] Phase 9: Advanced Analytics & Export

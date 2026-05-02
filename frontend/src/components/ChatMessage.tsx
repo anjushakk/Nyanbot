@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Bot, User, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -53,12 +54,14 @@ const ChatMessage = ({
     >
       <div
         className={cn(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+          "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg overflow-hidden",
           isBot ? "bg-primary/20 neon-border" : isOwnMessage ? "bg-primary/10" : "bg-secondary"
         )}
       >
         {isBot ? (
           <Bot className="h-4 w-4 text-primary" />
+        ) : message.user?.avatar ? (
+          <img src={message.user.avatar} alt="Avatar" className="h-full w-full object-cover" />
         ) : (
           <User className={cn("h-4 w-4", isOwnMessage ? "text-primary" : "text-muted-foreground")} />
         )}
@@ -76,7 +79,7 @@ const ChatMessage = ({
 
         <div
           className={cn(
-            "rounded-2xl px-4 py-3 text-sm leading-relaxed",
+            "rounded-2xl px-4 py-3 text-sm leading-relaxed overflow-x-auto",
             isBot
               ? "bg-card glass neon-border text-card-foreground shadow-lg"
               : isOwnMessage 
@@ -85,10 +88,11 @@ const ChatMessage = ({
           )}
         >
           <div className={cn(
-            "prose prose-sm max-w-none",
-            (isBot || !isOwnMessage) ? "prose-invert" : "prose-primary-foreground"
+            "prose prose-sm max-w-none break-words",
+            (isBot || !isOwnMessage) ? "prose-invert" : "text-white prose-p:text-white prose-headings:text-white prose-strong:text-white prose-li:text-white",
+            "prose-table:border-collapse prose-table:w-full prose-th:border prose-th:border-border prose-th:bg-secondary/50 prose-th:px-3 prose-th:py-2 prose-td:border prose-td:border-border prose-td:px-3 prose-td:py-2"
           )}>
-            <ReactMarkdown>{message.content}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
           </div>
         </div>
 

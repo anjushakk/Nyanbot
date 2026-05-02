@@ -9,10 +9,16 @@ from pydantic import BaseModel, EmailStr, ConfigDict
 class UserBase(BaseModel):
     email: EmailStr
     name: str
+    avatar: Optional[str] = None
 
 
 class UserCreate(UserBase):
     password: str
+
+
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    avatar: Optional[str] = None
 
 
 class UserLogin(BaseModel):

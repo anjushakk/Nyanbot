@@ -27,7 +27,10 @@ const PdfUploadBanner = ({ files, onRemove }: PdfUploadBannerProps) => {
             className="flex items-center gap-2 rounded-lg bg-secondary px-3 py-1.5 text-xs"
           >
             <FileText className="h-3.5 w-3.5 text-primary" />
-            <span className="text-foreground truncate max-w-[150px]">{f.name}</span>
+            <div className="flex flex-col">
+              <span className="text-foreground truncate max-w-[150px] font-medium">{f.name}</span>
+              {f.user && <span className="text-[9px] text-muted-foreground">by {f.user}</span>}
+            </div>
             {f.status === "ready" ? (
               <CheckCircle2 className="h-3.5 w-3.5 text-neon-cyan" />
             ) : (

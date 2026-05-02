@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/sessions/{session_id}/messages", tags=["messages
 
 
 @router.post("", response_model=schemas.MessageResponse, status_code=status.HTTP_201_CREATED)
-def send_message(
+async def send_message(
     session_id: str,
     message_data: schemas.MessageCreate,
     background_tasks: BackgroundTasks,
@@ -43,114 +43,164 @@ def send_message(
             detail="You are not a member of this session"
         )
     
-    # Save user message
-    user_message = models.Message(
-        session_id=session_id,
-        user_id=current_user.id,
-        content=message_data.content,
-        role="user"
+    # 1. Save user message using thread pool
+    from fastapi.concurrency import run_in_threadpool
+    from app.database import SessionLocal
+    user_message = await run_in_threadpool(
+        _save_user_message_sync,
+        session_id, current_user.id, message_data.content, SessionLocal
     )
     
-    db.add(user_message)
-    db.commit()
-    db.refresh(user_message)
-    
-    # Broadcast user message immediately
+    # 2. Broadcast user message immediately (async)
     from fastapi.encoders import jsonable_encoder
+    user_msg_json = jsonable_encoder(schemas.MessageResponse.model_validate(user_message))
+    await manager.broadcast_to_session(session_id, {"type": "new_message", "message": user_msg_json})
     
-    async def broadcast_updates(msg_obj, sess_id):
-        # Broadcast user message
-        msg_json = jsonable_encoder(schemas.MessageResponse.model_validate(msg_obj))
-        await manager.broadcast_to_session(sess_id, {"type": "new_message", "message": msg_json})
+    # 3. Add background task for AI processing
+    from app.database import SessionLocal
+    background_tasks.add_task(
+        process_ai_response_task,
+        session_id,
+        message_data.content,
+        user_message.id,
+        SessionLocal
+    )
+    
+    return user_message
 
-    background_tasks.add_task(broadcast_updates, user_message, session_id)
-    
-    # Search for relevant context from documents using RAG
-    context = ""
+
+def _save_user_message_sync(session_id, user_id, content, db_factory):
+    """Synchronous logic to save user message."""
+    db = db_factory()
     try:
+        user_message = models.Message(
+            session_id=session_id,
+            user_id=user_id,
+            content=content,
+            role="user"
+        )
+        db.add(user_message)
+        db.commit()
+        db.refresh(user_message)
+        return user_message
+    finally:
+        db.close()
+
+
+async def process_ai_response_task(session_id: str, query: str, user_message_id: str, db_session_factory):
+    """Background task to generate AI response using RAG."""
+    # 1. Notify that AI is thinking
+    await manager.broadcast_to_session(session_id, {"type": "typing", "role": "assistant"})
+    
+    # 2. Run heavy processing in threadpool
+    from fastapi.concurrency import run_in_threadpool
+    ai_message = await run_in_threadpool(
+        _generate_ai_response_sync,
+        session_id, query, db_session_factory
+    )
+    
+    if ai_message:
+        # 3. Broadcast AI response (async)
+        from fastapi.encoders import jsonable_encoder
+        from app import schemas
+        ai_msg_json = jsonable_encoder(schemas.MessageResponse.model_validate(ai_message))
+        await manager.broadcast_to_session(session_id, {"type": "new_message", "message": ai_msg_json})
+    
+    # 4. Notify that AI is done thinking
+    await manager.broadcast_to_session(session_id, {"type": "typing_off", "role": "assistant"})
+
+
+def _generate_ai_response_sync(session_id: str, query: str, db_session_factory):
+    """Synchronous part of AI response generation."""
+    db = db_session_factory()
+    try:
+        from app import models, schemas
         from app.services.embeddings import EmbeddingService
         from app.services.chroma_store import ChromaStore
+        from app.services.llm_service import LLMService
         
-        # Search in ChromaDB
-        chroma_store = ChromaStore()
-        
-        # Generate query embedding
-        embedding_service = EmbeddingService()
-        query_embedding = embedding_service.generate_query_embedding(message_data.content)
-        
-        # Search
-        # Search with k=8 to improve accuracy (truncation in LLM service will protect TPM)
-        search_results = chroma_store.search(session_id, query_embedding, k=8)
-        
-        # Build context from top results
-        if search_results:
-            context = "\n\n".join([
-                f"[From {res['metadata'].get('filename', 'document')}]: {res['content']}"
-                for res in search_results
-            ])
-            print(f"DEBUG: Found {len(search_results)} matching chunks in ChromaDB")
-        
-        # Fallback for general queries (like 'summarise') if results are thin
-        is_summary_query = any(word in message_data.content.lower() for word in ["summarize", "summarise", "overview", "what is this", "about"])
-        if (not context or is_summary_query) and db.query(models.Document).filter(models.Document.session_id == session_id).count() > 0:
-            print("DEBUG: General query detected or no context found. Fetching document introductions.")
-            intro_chunks = db.query(models.Chunk).join(models.Document).filter(
-                models.Document.session_id == session_id,
-                models.Chunk.chunk_index < 3 # Get first 3 chunks as introduction
-            ).limit(5).all()
-            
-            if intro_chunks:
-                intro_context = "\n\n".join([f"[Intro from {c.document.filename}]: {c.content}" for c in intro_chunks])
-                context = (context + "\n\nDOCUMENT INTRODUCTIONS:\n" + intro_context).strip()
-    except Exception as e:
-        # No documents or vector store doesn't exist - that's okay
-        print(f"No RAG context available: {e}")
+        # Search for relevant context
         context = ""
+        try:
+            chroma_store = ChromaStore()
+            embedding_service = EmbeddingService()
+            query_embedding = embedding_service.generate_query_embedding(query)
+            search_results = chroma_store.search(session_id, query_embedding, k=10)
+            
+            if search_results:
+                context = "\n\n".join([
+                    f"[From {res['metadata'].get('filename', 'document')}]: {res['content']}"
+                    for res in search_results
+                ])
+                
+            # Fallback for general queries
+            is_summary_query = any(word in query.lower() for word in ["summarize", "summarise", "overview", "what is this", "about", "tell me about"])
+            if (len(search_results) < 3 or is_summary_query) and db.query(models.Document).filter(models.Document.session_id == session_id).count() > 0:
+                intro_chunks = db.query(models.Chunk).join(models.Document).filter(
+                    models.Document.session_id == session_id,
+                    models.Chunk.chunk_index < 5 
+                ).limit(15).all()
+                
+                if intro_chunks:
+                    intro_context = "\n\n".join([f"[Intro from {c.document.filename}]: {c.content}" for c in intro_chunks])
+                    context = (context + "\n\nGENERAL DOCUMENT OVERVIEW (IF RELEVANT):\n" + intro_context).strip()
+        except Exception as e:
+            print(f"No RAG context available: {e}")
+            context = ""
 
-    
-    # Get conversation history (last 10 messages)
-    history = db.query(models.Message).filter(
-        models.Message.session_id == session_id
-    ).order_by(models.Message.created_at.desc()).limit(10).all()
-    
-    conversation_history = [
-        {"role": msg.role, "content": msg.content}
-        for msg in reversed(history[:-1])  # Exclude the message we just added
-    ]
-    
-    # Generate AI response using LLM
-    from app.services.llm_service import LLMService
-    llm_service = LLMService()
-    
-    # Generate response
-    ai_response_text = llm_service.generate_response(
-        query=message_data.content,
-        context=context,
-        conversation_history=conversation_history
-    )
-    
-    # If no documents exist in session, inform user
-    doc_count = db.query(models.Document).filter(models.Document.session_id == session_id).count()
-    if doc_count == 0 and not "upload" in ai_response_text.lower():
-        ai_response_text = "I don't have any documents to reference yet. Please upload some PDFs to get started!\n\n" + ai_response_text
-    
-    # Save AI response
-    ai_message = models.Message(
-        session_id=session_id,
-        user_id=None,  # AI message has no user
-        content=ai_response_text,
-        role="assistant"
-    )
-    
-    db.add(ai_message)
-    db.commit()
-    db.refresh(ai_message)
-    
-    # Broadcast AI response
-    background_tasks.add_task(broadcast_updates, ai_message, session_id)
-    
-    # Return the user message (frontend will poll and get AI response)
-    return user_message
+        # Check for processing docs
+        doc_count = db.query(models.Document).filter(models.Document.session_id == session_id).count()
+        if not context and doc_count > 0:
+            processing_docs = db.query(models.Document).filter(models.Document.session_id == session_id).all()
+            still_processing = False
+            for doc in processing_docs:
+                if db.query(models.Chunk).filter(models.Chunk.document_id == doc.id).count() == 0:
+                    still_processing = True
+                    break
+            if still_processing:
+                context = "[SYSTEM NOTE: One or more documents are still being processed. Inform the user to wait a moment if their question depends on these documents.]"
+
+        # History
+        history = db.query(models.Message).filter(
+            models.Message.session_id == session_id
+        ).order_by(models.Message.created_at.desc()).limit(11).all()
+        
+        conversation_history = [
+            {"role": msg.role, "content": msg.content}
+            for msg in reversed(history[1:]) # Skip the message just sent
+        ]
+        
+        # Generate response
+        llm_service = LLMService()
+        ai_response_text = llm_service.generate_response(
+            query=query,
+            context=context,
+            conversation_history=conversation_history
+        )
+        
+        if doc_count == 0 and not "upload" in ai_response_text.lower():
+            ai_response_text = "I don't have any documents to reference yet. Please upload some PDFs to get started!\n\n" + ai_response_text
+            
+        # Save AI response
+        ai_message = models.Message(
+            session_id=session_id,
+            user_id=None,
+            content=ai_response_text,
+            role="assistant"
+        )
+        db.add(ai_message)
+        db.commit()
+        db.refresh(ai_message)
+        
+        return ai_message
+        
+    except Exception as e:
+        print(f"Error in background AI processing: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+    finally:
+        db.close()
 
 
 @router.get("", response_model=List[schemas.MessageResponse])

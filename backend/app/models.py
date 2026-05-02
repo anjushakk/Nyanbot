@@ -17,6 +17,7 @@ class User(Base):
     name = Column(String, nullable=False)
     password_hash = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    avatar = Column(Text, nullable=True)
     
     # Relationships
     messages = relationship("Message", back_populates="user")
@@ -36,9 +37,9 @@ class Session(Base):
     
     # Relationships
     owner = relationship("User", foreign_keys=[owner_id])
-    members = relationship("SessionMember", back_populates="session")
-    documents = relationship("Document", back_populates="session")
-    messages = relationship("Message", back_populates="session")
+    members = relationship("SessionMember", back_populates="session", cascade="all, delete-orphan")
+    documents = relationship("Document", back_populates="session", cascade="all, delete-orphan")
+    messages = relationship("Message", back_populates="session", cascade="all, delete-orphan")
 
 
 class SessionMember(Base):
@@ -70,7 +71,7 @@ class Document(Base):
     # Relationships
     session = relationship("Session", back_populates="documents")
     uploaded_by_user = relationship("User", back_populates="uploaded_documents")
-    chunks = relationship("Chunk", back_populates="document")
+    chunks = relationship("Chunk", back_populates="document", cascade="all, delete-orphan")
 
 
 class Chunk(Base):

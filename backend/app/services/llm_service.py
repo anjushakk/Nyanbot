@@ -49,9 +49,11 @@ class LLMService:
 INSTRUCTIONS:
 - Primary Goal: Provide accurate and precise answers based on the CONTEXT FROM DOCUMENTS provided.
 - Summarization: If the user asks for a summary, provide a comprehensive overview using the available context. Mention key topics, purpose, and main points.
-- Specific Questions: For detailed questions, use ONLY the information from the context. Cite sources if possible.
-- Missing Information: If the context is completely unrelated to the question, state that you don't have enough information in the documents *for that specific detail*, but still try to be helpful based on what you *do* know about the document's general subject.
-- Natural Tone: Use natural, professional language. Do not be overly repetitive or robotic."""
+- Specific Questions: For detailed questions, use the information from the context. Cite sources if possible.
+- Missing Information: If the provided context doesn't contain the exact answer, try to provide a helpful response based on the "General Document Overview" if available, or explain what the documents *do* cover. Only state you can't find the information if it's completely absent.
+- Formatting: Structure your answers for readability. Use paragraphs, bullet points, or numbered lists. **Bold** key terms.
+- Tables: When providing tables, use standard GitHub Flavored Markdown (GFM) format. Ensure each cell is separated by a single pipe `|`, and include a delimiter row with dashes `| --- | --- |` immediately after the header. Never use double pipes `||` or put multiple rows on one line.
+- Natural Tone: Use natural, professional language. Keep answers concise but thorough. Use Markdown for all formatting. """
 
     def _estimate_tokens(self, text: str) -> int:
         """Rough estimate of token count (approximation)."""
@@ -70,7 +72,7 @@ INSTRUCTIONS:
         # Build conversation context
         conversation_text = ""
         if conversation_history:
-            conversation_text = "\n\nPrevious conversation:\n"
+            conversation_text = "\n\nChat History:\n"
             # Keep only the last 3 turns to leave more room for context
             for msg in conversation_history[-3:]:  
                 role = "User" if msg["role"] == "user" else "Assistant"

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageSquare,
@@ -15,6 +15,7 @@ import {
   Crown,
   Copy,
   Check,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -23,6 +24,8 @@ import { useDeleteSession, useLeaveSession } from "@/hooks/useSessions";
 import type { SessionListItem } from "@/types";
 import SessionDialog from "./SessionDialog";
 import JoinSessionDialog from "./JoinSessionDialog";
+import SettingsDialog from "./SettingsDialog";
+import { Input } from "@/components/ui/input";
 
 interface ChatSidebarProps {
   sessions: SessionListItem[];
@@ -43,15 +46,26 @@ const ChatSidebar = ({
   const [privateOpen, setPrivateOpen] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [joinDialogOpen, setJoinDialogOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const { user, logout } = useAuth();
   const deleteMutation = useDeleteSession();
   const leaveMutation = useLeaveSession();
 
-  // Separate sessions by role
-  const ownedSessions = sessions.filter((s) => s.role === "owner");
-  const memberSessions = sessions.filter((s) => s.role === "member");
+  // Separate sessions by role, filter by search, and sort by date
+  const ownedSessions = useMemo(() => {
+    return sessions
+      .filter((s) => s.role === "owner" && s.name.toLowerCase().includes(searchQuery.toLowerCase()))
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }, [sessions, searchQuery]);
+
+  const memberSessions = useMemo(() => {
+    return sessions
+      .filter((s) => s.role === "member" && s.name.toLowerCase().includes(searchQuery.toLowerCase()))
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }, [sessions, searchQuery]);
 
   const handleDelete = (sessionId: string, role: string) => {
     if (role === "owner") {
@@ -82,9 +96,13 @@ const ChatSidebar = ({
 
         {/* Nav Icons */}
         <div className="flex gap-1 px-4 pb-3">
-          {[MessageSquare, FileText, Bot, Settings].map((Icon, i) => (
+          {[
+            { icon: MessageSquare, onClick: () => {} },
+            { icon: Settings, onClick: () => setSettingsOpen(true) },
+          ].map((item, i) => (
             <button
               key={i}
+              onClick={item.onClick}
               className={cn(
                 "flex h-9 w-9 items-center justify-center rounded-lg transition-colors",
                 i === 0
@@ -92,7 +110,7 @@ const ChatSidebar = ({
                   : "text-muted-foreground hover:bg-secondary hover:text-foreground"
               )}
             >
-              <Icon className="h-4 w-4" />
+              <item.icon className="h-4 w-4" />
             </button>
           ))}
         </div>
@@ -117,10 +135,18 @@ const ChatSidebar = ({
         </div>
 
         {/* Sessions */}
-        <div className="flex-1 overflow-y-auto px-3 scrollbar-thin">
-          <p className="px-2 pb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Sessions
-          </p>
+        <div className="flex-1 overflow-y-auto px-3 pb-10 flex flex-col gap-2">
+          <div className="px-2">
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Search chats..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-8 pl-8 bg-secondary/50 border-transparent text-xs placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-primary/50"
+              />
+            </div>
+          </div>
 
           {/* Owned Sessions */}
           <button
@@ -206,10 +232,14 @@ const ChatSidebar = ({
         </div>
 
         {/* User */}
-        <div className="border-t border-border px-4 py-3">
+        <div className="border-t border-border px-4 py-3 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold text-primary">
-              {user?.name?.charAt(0).toUpperCase() || "U"}
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold text-primary overflow-hidden">
+              {user?.avatar ? (
+                <img src={user.avatar} alt="Avatar" className="h-full w-full object-cover" />
+              ) : (
+                user?.name?.charAt(0).toUpperCase() || "U"
+              )}
             </div>
             <div className="flex-1 truncate">
               <p className="text-sm font-medium text-foreground truncate">{user?.name || "User"}</p>
@@ -236,6 +266,10 @@ const ChatSidebar = ({
         open={joinDialogOpen}
         onOpenChange={setJoinDialogOpen}
         onSuccess={onSessionJoined}
+      />
+      <SettingsDialog 
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
       />
     </>
   );
